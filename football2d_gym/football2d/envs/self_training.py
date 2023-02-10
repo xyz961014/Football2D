@@ -41,8 +41,8 @@ class SelfTraining_v0(gym.Env):
             self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
             self.player = Player(Vec2d(*np.random.randint(-300, 300, 2)))
         else:
-            self.ball = Ball(Vec2d(0, 0))
-            self.player = Player(Vec2d(-100, 0))
+            self.ball = Ball(Vec2d(-1.9, 0), Vec2d(0, -1000))
+            self.player = Player(Vec2d(0, 0))
         self.time = 0
 
         # Observations are dictionaries with the agent's and the target's location.
@@ -372,7 +372,7 @@ class SelfTraining_v0(gym.Env):
 
         # draw the ball and the player
         self.player.update()
-        self.ball.update()
+        self.ball.update([self.player])
         self.player.draw(canvas)
         self.ball.draw(canvas)
 

@@ -10,7 +10,8 @@ PLAYER_RED = (200, 0, 0)
 PLAYER_SIZE = 15
 PLAYER_MASS = 75
 
-KICK_RANGE = 3
+KICK_RANGE = 5
+REBOUND_RANGE = 2
 MAX_SPEED = 100
 MAX_ACCELERATION = 100
 MAX_MOMENTUM = 150
@@ -21,7 +22,8 @@ deltaTime = 0.02
 
 class Player(object):
     def __init__(self, position: Vec2d, speed: Vec2d=None, mass=PLAYER_MASS,
-                       kick_range=KICK_RANGE, max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
+                       kick_range=KICK_RANGE, rebound_range=REBOUND_RANGE,
+                       max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
                        max_momentum=MAX_MOMENTUM,
                        resistance_factor=RESISTANCE_FACTOR,
                        name="Robben", number=10, 
@@ -33,6 +35,7 @@ class Player(object):
         self.mass = mass # kg
 
         self.kick_range = kick_range
+        self.rebound_range = rebound_range
         self.max_speed = max_speed
         self.max_acceleration = max_acceleration
         self.max_momentum = max_momentum

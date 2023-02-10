@@ -35,6 +35,7 @@ class Ball(object):
         self.acceleration = self.get_acceleration()
         self.curr_bounce_factor = bounce_factor # change due to different situations
         self.home_goal, self.away_goal = self.in_the_net()
+        self.rebound_from_player = False
 
         # useless ball attributes
         self.color = color
@@ -151,7 +152,7 @@ class Ball(object):
 
         return home_goal, away_goal
 
-    def update(self):
+    def update(self, players):
         self.get_acceleration()
         self.speed = self.speed + self.acceleration * deltaTime
         self.position = self.position + self.speed * deltaTime
@@ -161,9 +162,10 @@ class Ball(object):
         home_goal, away_goal = self.in_the_net()
         self.home_goal = self.home_goal or home_goal
         self.away_goal = self.away_goal or away_goal
+
+        # rebound from border
         if home_goal or away_goal:
             self.curr_bounce_factor = self.goal_bounce_factor
-
         out_of_pitch, (out_of_x, out_of_y) = self.out_of_pitch()
         if out_of_pitch and not (home_goal or away_goal):
             if fix_x:
@@ -172,6 +174,41 @@ class Ball(object):
                 self.speed = Vec2d(self.speed.x, -self.speed.y)
             self.speed = self.speed * self.curr_bounce_factor
             self.curr_bounce_factor = self.bounce_factor
+
+        # rebound from players
+        for player in players:
+            if self.in_rebound_range(player):
+                self.rebound_from(player)
+                break
+        else:
+            self.rebound_from_player = False
+
+    def rebound_from(self, player):
+        d_to_player = (player.position - self.position)
+        if d_to_player.length > player.rebound_range:
+            return
+        
+        # ball can not go throuth the player
+        if not self.rebound_from_player:
+            inner_angle = d_to_player.get_angle_between(self.speed)
+            position_fix_len = np.sqrt(np.square(player.rebound_range) - np.square(d_to_player.length * np.sin(inner_angle))) - d_to_player.length * np.cos(inner_angle)
+            self.position = self.position - self.speed.normalized() * position_fix_len
+            rebound_angle = self.speed.get_angle_between(player.position - self.position)
+            if rebound_angle < 0:
+                self.speed = self.speed.rotated(np.pi + rebound_angle * 2)
+            else:
+                self.speed = self.speed.rotated(-np.pi + rebound_angle * 2)
+            self.speed = self.speed * self.bounce_factor
+            self.rebound_from_player = True
+
+
+    def in_rebound_range(self, player):
+        distance = (player.position - self.position).length
+        if distance <= player.rebound_range:
+            return True
+        else:
+            return False
+
 
     def kicked(self, momentum):
         self.speed = self.speed + momentum / self.mass
