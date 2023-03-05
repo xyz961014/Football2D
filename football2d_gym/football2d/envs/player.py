@@ -18,9 +18,14 @@ MAX_MOMENTUM = 150
 RUNUP_FACTOR = 1
 RESISTANCE_FACTOR = 10
 
+# v1
+DIRECTION_UNCERTAINTY = 0.1
+POWER_UNCERTAINTY = 20
+SPEED_UNCERTAINTY = 1
+
 deltaTime = 0.02
 
-class Player(object):
+class Player_v0(object):
     def __init__(self, position: Vec2d, speed: Vec2d=None, mass=PLAYER_MASS,
                        kick_range=KICK_RANGE, rebound_range=REBOUND_RANGE,
                        max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
@@ -161,5 +166,54 @@ class Player(object):
             self.speed = Vec2d.zero()
             if old_fix_x or old_fix_y:
                 self.position = old_position
+
+
+class Player_v1(Player_v0):
+    def __init__(self, position: Vec2d, speed: Vec2d=None, mass=PLAYER_MASS,
+                       kick_range=KICK_RANGE, rebound_range=REBOUND_RANGE,
+                       max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
+                       max_momentum=MAX_MOMENTUM,
+                       resistance_factor=RESISTANCE_FACTOR,
+                       name="Robben", number=10, 
+                       color=PLAYER_RED, size=PLAYER_SIZE,
+                       # new attributes for v1
+                       direction_uncertainty=DIRECTION_UNCERTAINTY,
+                       power_uncertainty=POWER_UNCERTAINTY,
+                       speed_uncertainty=SPEED_UNCERTAINTY
+                       ):
+        super().__init__(position, speed, mass, kick_range, rebound_range, max_speed, max_acceleration, max_momentum,
+                         resistance_factor, name, number, color, size)
+        self.direction_uncertainty = direction_uncertainty
+        self.power_uncertainty = power_uncertainty
+        self.speed_uncertainty = speed_uncertainty
+
+    def act(self, action, ball):
+        move_acceleration = Vec2d(*action[0] * self.max_acceleration)
+        if move_acceleration.length > self.max_acceleration:
+            move_acceleration = move_acceleration.normalized() * self.max_acceleration
+        self.acceleration = move_acceleration
+
+        kick_momentum = Vec2d(*action[1] * self.max_momentum)
+        if kick_momentum.length > self.max_momentum:
+            kick_momentum = kick_momentum.normalized() * self.max_momentum
+
+        # adjust noise factor according to player speed
+        speed_factor = self.speed.length / self.max_speed * self.speed_uncertainty
+        strength_factor = kick_momentum.length / self.max_momentum
+        direction_factor = self.direction_uncertainty * strength_factor * speed_factor
+        power_factor = self.power_uncertainty * strength_factor * speed_factor
+
+        # randomize direction
+        direction_noise = np.random.normal() * direction_factor
+        kick_momentum = kick_momentum.rotated(direction_noise)
+
+        # randomize power
+        power_noise = np.random.normal() * power_factor
+        kick_momentum = kick_momentum.normalized() * min(max(0, kick_momentum.length + power_noise), self.max_momentum)
+
+        kick_momentum += kick_momentum.normalized() * kick_momentum.normalized().dot(self.speed) * RUNUP_FACTOR 
+        # Kick the ball if in range
+        if (self.position - ball.position).length < self.kick_range:
+            ball.kicked(kick_momentum)
 
 

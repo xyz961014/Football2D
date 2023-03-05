@@ -63,7 +63,7 @@ The reward is always zero unless a goal is scored. If a goal scored in the right
 
 - Time limit is 120s. If time limit is reached, the game is truncated.
 
-- No collisions, the ball can go through the player if the player doesn't kick it.
+- The player has a rebound range, collision will happen it the ball tries to go through the player with in the rebound range.
 
 - All actions are accurate (we consider add noise to actions in next version).
 
@@ -78,4 +78,19 @@ The reward is always zero unless a goal is scored. If a goal scored in the right
 
 #### SelfTraining-v1
 
-##### New Features
+Based on version v0, we add the following features:
+
+- the larger the kicking power (larger momentum), the larger the uncertainty in direction and strength of the momentum. 
+- the faster the player moves, the larger the kicking noise.
+- If the ball is out of play, the game is terminated.
+
+#### SelfTraining-v2
+
+Based on the version v1, we add the following features:
+
+- expand the player states, add player direction vector
+- expand action space, add turning action.
+- player has a maximum turning angular velocity.
+- moving forward is faster than moving backward
+- kicking forward can use more force (larger momentum) than kicking backward
+- kicking backward has larger noise.

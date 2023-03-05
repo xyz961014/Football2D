@@ -4,7 +4,7 @@ import pygame
 import numpy as np
 from pymunk import Vec2d
 from football2d.envs.ball import Ball
-from football2d.envs.player import Player
+from football2d.envs.player import Player_v0, Player_v1
 from pprint import pprint
 import ipdb
 
@@ -39,10 +39,10 @@ class SelfTraining_v0(gym.Env):
         # Position of ball and player are relative to the center point
         if randomize_position:
             self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
-            self.player = Player(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.player = Player_v0(Vec2d(*np.random.randint(-300, 300, 2)))
         else:
-            self.ball = Ball(Vec2d(-1.9, 0), Vec2d(0, -1000))
-            self.player = Player(Vec2d(0, 0))
+            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0))
+            self.player = Player_v0(Vec2d(-100, 0))
         self.time = 0
 
         # Observations are dictionaries with the agent's and the target's location.
@@ -116,14 +116,16 @@ class SelfTraining_v0(gym.Env):
         else:
             reward = 0
 
-        if self.ball.goal and self.ball.speed.length == 0:
-            terminated = True
+        if self.ball.goal: 
+            if self.ball.speed.length == 0:
+                print("Game terminated. Goal.")
+                terminated = True
         if self.time > self.time_limit:
+            print("Game truncated. Reach time limit.")
             truncated = True
 
         observation = self._get_obs()
         info = self._get_info()
-        #pprint(observation)
 
         if self.render_mode == "human":
             self._render_frame()
@@ -416,3 +418,44 @@ class SelfTraining_v1(SelfTraining_v0):
 
     def __init__(self, render_mode=None, time_limit=120, randomize_position=False):
         super().__init__(render_mode, time_limit, randomize_position)
+        if randomize_position:
+            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.player = Player_v1(Vec2d(*np.random.randint(-300, 300, 2)))
+        else:
+            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0))
+            self.player = Player_v1(Vec2d(-100, 0))
+
+    def step(self, action):
+
+        self.time += timeDelta
+
+        self.player.act(action, self.ball)
+        terminated = False
+        truncated = False
+        if self.ball.home_goal:
+            reward = 1
+        elif self.ball.away_goal:
+            reward = -1
+        else:
+            reward = 0
+
+        if self.ball.goal: 
+            if self.ball.speed.length == 0:
+                print("Game terminated. Goal.")
+                terminated = True
+        elif self.ball.out:
+            print("Game terminated. Out.")
+            terminated = True
+        if self.time > self.time_limit:
+            print("Game truncated. Reach time limit.")
+            truncated = True
+
+        observation = self._get_obs()
+        info = self._get_info()
+
+        if self.render_mode == "human":
+            self._render_frame()
+
+        return observation, reward, terminated, truncated, info
+
+

@@ -12,7 +12,7 @@ BALL_MASS = 0.45
 RESISTANCE_FACTOR_1 = 15
 RESISTANCE_FACTOR_2 = 8e-4
 
-BOUNCE_FACTOR = 0.5
+BOUNCE_FACTOR = 0.8
 GOAL_BOUNCE_FACTOR = 0.1
 
 deltaTime = 0.02
@@ -35,6 +35,7 @@ class Ball(object):
         self.acceleration = self.get_acceleration()
         self.curr_bounce_factor = bounce_factor # change due to different situations
         self.home_goal, self.away_goal = self.in_the_net()
+        self.out = False
         self.rebound_from_player = False
 
         # useless ball attributes
@@ -137,6 +138,7 @@ class Ball(object):
             out_of_x = True
         if not -680 / 2 < self.position.y < 680 / 2:
             out_of_y = True
+        self.out = out_of_x or out_of_y
 
         return out_of_x or out_of_y, (out_of_x, out_of_y)
 
@@ -198,7 +200,7 @@ class Ball(object):
                 self.speed = self.speed.rotated(np.pi + rebound_angle * 2)
             else:
                 self.speed = self.speed.rotated(-np.pi + rebound_angle * 2)
-            self.speed = self.speed * self.bounce_factor
+            self.speed = (self.speed + player.speed) * self.bounce_factor + player.speed
             self.rebound_from_player = True
 
 
