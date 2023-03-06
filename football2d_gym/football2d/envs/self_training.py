@@ -2,6 +2,8 @@ import gym
 from gym import spaces
 import pygame
 import numpy as np
+import re
+import string
 from pymunk import Vec2d
 from football2d.envs.ball import Ball
 from football2d.envs.player import Player_v0, Player_v1, Player_v2
@@ -23,6 +25,7 @@ GOAL_WIDTH = 3
 TIME_TEXT_SIZE = 25
 GOAL_TEXT_SIZE = 40
 REWARD_TEXT_SIZE = 20
+STATE_ACTION_TEXT_SIZE = 18
 
 timeDelta = 0.02
 
@@ -33,7 +36,7 @@ class SelfTraining_v0(gym.Env):
         super().__init__()
         self.time_limit = time_limit
         self.window_width = 1200  # The size of the PyGame window
-        self.window_height = 800  # The size of the PyGame window
+        self.window_height = 900  # The size of the PyGame window
         self.center_point = CENTER
 
         # Position of ball and player are relative to the center point
@@ -88,6 +91,20 @@ class SelfTraining_v0(gym.Env):
                 "distance_to_ball": self.ball.distance_to(self.player.position),
                 "distance_to_goal": self.ball.distance_to_right_goal()
                }
+
+    def _get_obs_strs(self):
+        observation = self._get_obs()
+        obs_strs = {}
+        for name, value in observation.items():
+            if type(value) is np.ndarray:
+                if value.size == 1:
+                    obs_strs[name] = "{:20}: {:9.2f}           ".format(re.sub("_", " ", string.capwords(name)),
+                                                                        value[0])
+                elif value.size == 2:
+                    obs_strs[name] = "{:20}: ({:8.2f}, {:8.2f})".format(re.sub("_", " ", string.capwords(name)),
+                                                                        value[0], value[1])
+
+        return obs_strs
 
 
     def reset(self, seed=None, options=None):
@@ -370,6 +387,28 @@ class SelfTraining_v0(gym.Env):
                        font_name="consolas",
                        x=1070, y=25, color=BLACK,
                        name="reward")
+
+        # print state
+        obs_strs = self._get_obs_strs()
+        state_y = 750
+        for key, state_str in obs_strs.items():
+            self.draw_text(state_str, 
+                           STATE_ACTION_TEXT_SIZE, 
+                           font_name="consolas",
+                           x=300, y=state_y, color=BLACK,
+                           name="state {}".format(key))
+            state_y += STATE_ACTION_TEXT_SIZE
+
+        # print action
+        action_strs = self.player.get_action_strs()
+        state_y = 750
+        for key, action_str in action_strs.items():
+            self.draw_text(action_str, 
+                           STATE_ACTION_TEXT_SIZE, 
+                           font_name="consolas",
+                           x=900, y=state_y, color=BLACK,
+                           name="action {}".format(key))
+            state_y += STATE_ACTION_TEXT_SIZE
 
 
         # draw the ball and the player

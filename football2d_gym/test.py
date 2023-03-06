@@ -19,7 +19,7 @@ try:
         else:
             action = np.array([1., 0., 
                                1., 0.,
-                               -0.2,
+                               -0.1,
                                ])
         observation, reward, terminated, truncated, info = env.step(action)
         step += 1

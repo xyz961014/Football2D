@@ -56,6 +56,7 @@ class Player_v0(object):
         self.resistance_factor = resistance_factor
         
         self.acceleration = Vec2d.zero()
+        self.action = None
 
         # useless player attributes
         self.name = name
@@ -146,7 +147,18 @@ class Player_v0(object):
         acceleration = self.acceleration - self.speed.normalized() * force / self.mass
         return acceleration
 
+    def get_action_strs(self):
+        action = self.action if self.action is not None else np.zeros(5)
+        action_strs = {}
+        action_strs["acceleration"]  = "{:20}: ({:8.2f}, {:8.2f})".format("Acceleration", 
+                                                                          action[0], action[1])
+        action_strs["kick_momentum"] = "{:20}: ({:8.2f}, {:8.2f})".format("Kick momentum", 
+                                                                          action[2], action[3])
+        return action_strs
+
     def act(self, action, ball):
+        self.action = action
+
         move_acceleration = Vec2d(*action[0:2] * self.max_acceleration)
         if move_acceleration.length > self.max_acceleration:
             move_acceleration = move_acceleration.normalized() * self.max_acceleration
@@ -156,6 +168,7 @@ class Player_v0(object):
         if kick_momentum.length > self.max_momentum:
             kick_momentum = kick_momentum.normalized() * self.max_momentum
         kick_momentum += kick_momentum.normalized() * kick_momentum.normalized().dot(self.speed) * RUNUP_FACTOR 
+
         # Kick the ball if in range
         if (self.position - ball.position).length < self.kick_range:
             ball.kicked(kick_momentum)
@@ -197,6 +210,8 @@ class Player_v1(Player_v0):
         self.speed_uncertainty = speed_uncertainty
 
     def act(self, action, ball):
+        self.action = action
+
         move_acceleration = Vec2d(*action[0:2] * self.max_acceleration)
         if move_acceleration.length > self.max_acceleration:
             move_acceleration = move_acceleration.normalized() * self.max_acceleration
@@ -293,7 +308,20 @@ class Player_v2(Player_v1):
         # assume no resistance force for turning
         return self.angular_acceleration
 
+    def get_action_strs(self):
+        action = self.action if self.action is not None else np.zeros(5)
+        action_strs = {}
+        action_strs["acceleration"]  = "{:20}: ({:8.2f}, {:8.2f})".format("Acceleration", 
+                                                                          action[0], action[1])
+        action_strs["kick_momentum"] = "{:20}: ({:8.2f}, {:8.2f})".format("Kick momentum", 
+                                                                          action[2], action[3])
+        action_strs["angular_acc"]   = "{:20}: {:9.2f}           ".format("Angular acceleration", 
+                                                                          action[4])
+        return action_strs
+
     def act(self, action, ball):
+        self.action = action
+
         heading_factor_move = (1 - Vec2d.dot(self.direction.normalized(), self.speed.normalized())) / 2 # 0-1 value
         move_acceleration = Vec2d(*action[0:2] * self.max_acceleration)
         max_acceleration = self.max_acceleration \

@@ -21,7 +21,7 @@ states = {
 
 ##### Actions
 
-Continuous ($2  \times 2$) shape action. The first vector is player acceleration. The second vector is ball kicking momentum. The ball will only be kicked when it is within the kicking range (3 uniformly in all directions in this env) of the player. 
+Continuous (4) shape action. The first two are player acceleration. The second two are ball kicking momentum. The ball will only be kicked when it is within the kicking range (3 uniformly in all directions in this env) of the player. 
 
 | Action              | Form                             |
 | ------------------- | -------------------------------- |
@@ -89,7 +89,7 @@ Based on version v0, we add the following features:
 Based on the version v1, we add the following features:
 
 - expand the player states, add player direction vector
-- expand action space, add turning action.
+- expand action space, add turning action. The action space is now 5 dimensional. The fifth dimension if the angular acceleration. Angular acceleration and angular speed has upper bounds. 
 - player has a maximum turning angular velocity.
 - moving forward is faster than moving backward
 - kicking forward can use more force (larger momentum) than kicking backward
