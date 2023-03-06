@@ -20,13 +20,15 @@ deltaTime = 0.02
 class Ball(object):
     def __init__(self, position: Vec2d, speed: Vec2d=None, mass=BALL_MASS, 
                  resistance_factor_1=RESISTANCE_FACTOR_1, resistance_factor_2=RESISTANCE_FACTOR_2,
+                 can_be_out=False,
                  bounce_factor=BOUNCE_FACTOR, goal_bounce_factor=GOAL_BOUNCE_FACTOR,
                  color=BALL_YELLOW, size=BALL_SIZE):
         super().__init__()
         self.position = position
         self.speed = speed if speed is not None else Vec2d.zero()
         self.mass = mass # kg
-
+        
+        self.can_be_out = can_be_out
         self.resistance_factor_1 = resistance_factor_1
         self.resistance_factor_2 = resistance_factor_2
         self.bounce_factor = bounce_factor
@@ -170,10 +172,13 @@ class Ball(object):
             self.curr_bounce_factor = self.goal_bounce_factor
         out_of_pitch, (out_of_x, out_of_y) = self.out_of_pitch()
         if out_of_pitch and not (home_goal or away_goal):
-            if fix_x:
-                self.speed = Vec2d(-self.speed.x, self.speed.y)
-            if fix_y:
-                self.speed = Vec2d(self.speed.x, -self.speed.y)
+            if self.can_be_out and not self.goal:
+                self.speed = Vec2d.zero()
+            else:
+                if fix_x:
+                    self.speed = Vec2d(-self.speed.x, self.speed.y)
+                if fix_y:
+                    self.speed = Vec2d(self.speed.x, -self.speed.y)
             self.speed = self.speed * self.curr_bounce_factor
             self.curr_bounce_factor = self.bounce_factor
 

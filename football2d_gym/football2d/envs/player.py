@@ -23,6 +23,15 @@ DIRECTION_UNCERTAINTY = 0.1
 POWER_UNCERTAINTY = 20
 SPEED_UNCERTAINTY = 1
 
+# v2
+MAX_BACKWARD_SPEED = 25
+MAX_BACKWARD_ACCELERATION = 25
+MAX_ANGULAR_SPEED = 10
+MAX_ANGULAR_ACCELERATION = 50
+HEADING_DIRECTION_UNCERTAINTY = 0.1
+HEADING_POWER_UNCERTAINTY = 20
+HEADING_POWER_DIFFICULTY = 75
+
 deltaTime = 0.02
 
 class Player_v0(object):
@@ -138,12 +147,12 @@ class Player_v0(object):
         return acceleration
 
     def act(self, action, ball):
-        move_acceleration = Vec2d(*action[0] * self.max_acceleration)
+        move_acceleration = Vec2d(*action[0:2] * self.max_acceleration)
         if move_acceleration.length > self.max_acceleration:
             move_acceleration = move_acceleration.normalized() * self.max_acceleration
         self.acceleration = move_acceleration
 
-        kick_momentum = Vec2d(*action[1] * self.max_momentum)
+        kick_momentum = Vec2d(*action[2:4] * self.max_momentum)
         if kick_momentum.length > self.max_momentum:
             kick_momentum = kick_momentum.normalized() * self.max_momentum
         kick_momentum += kick_momentum.normalized() * kick_momentum.normalized().dot(self.speed) * RUNUP_FACTOR 
@@ -188,12 +197,12 @@ class Player_v1(Player_v0):
         self.speed_uncertainty = speed_uncertainty
 
     def act(self, action, ball):
-        move_acceleration = Vec2d(*action[0] * self.max_acceleration)
+        move_acceleration = Vec2d(*action[0:2] * self.max_acceleration)
         if move_acceleration.length > self.max_acceleration:
             move_acceleration = move_acceleration.normalized() * self.max_acceleration
         self.acceleration = move_acceleration
 
-        kick_momentum = Vec2d(*action[1] * self.max_momentum)
+        kick_momentum = Vec2d(*action[2:4] * self.max_momentum)
         if kick_momentum.length > self.max_momentum:
             kick_momentum = kick_momentum.normalized() * self.max_momentum
 
@@ -215,5 +224,148 @@ class Player_v1(Player_v0):
         # Kick the ball if in range
         if (self.position - ball.position).length < self.kick_range:
             ball.kicked(kick_momentum)
+
+
+class Player_v2(Player_v1):
+    def __init__(self, position: Vec2d, speed: Vec2d=None, mass=PLAYER_MASS,
+                       kick_range=KICK_RANGE, rebound_range=REBOUND_RANGE,
+                       max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
+                       max_momentum=MAX_MOMENTUM,
+                       resistance_factor=RESISTANCE_FACTOR,
+                       name="Robben", number=10, 
+                       color=PLAYER_RED, size=PLAYER_SIZE,
+                       direction_uncertainty=DIRECTION_UNCERTAINTY,
+                       power_uncertainty=POWER_UNCERTAINTY,
+                       speed_uncertainty=SPEED_UNCERTAINTY,
+                       # v2 attributes
+                       direction=Vec2d(1, 0), angular_speed=0,
+                       max_backward_speed=MAX_BACKWARD_SPEED, max_backward_acceleration=MAX_BACKWARD_ACCELERATION,
+                       max_angular_speed=MAX_ANGULAR_SPEED, max_angular_acceleration=MAX_ANGULAR_ACCELERATION,
+                       heading_direction_uncertainty=HEADING_DIRECTION_UNCERTAINTY,
+                       heading_power_uncertainty=HEADING_POWER_UNCERTAINTY,
+                       heading_power_difficulty=HEADING_POWER_DIFFICULTY
+                       ):
+        super().__init__(position, speed, mass, kick_range, rebound_range, max_speed, max_acceleration, max_momentum,
+                         resistance_factor, name, number, color, size,
+                         direction_uncertainty, power_uncertainty, speed_uncertainty)
+        self.direction = direction
+        self.angular_speed = angular_speed
+
+        self.max_backward_speed = max_backward_speed
+        self.max_backward_acceleration = max_backward_acceleration
+        self.max_angular_speed = max_angular_speed
+        self.max_angular_acceleration = max_angular_acceleration
+
+        self.heading_direction_uncertainty = heading_direction_uncertainty
+        self.heading_power_uncertainty = heading_power_uncertainty
+        self.heading_power_difficulty = heading_power_difficulty
+
+        self.angular_acceleration = 0
+
+    def draw(self, canvas):
+        super().draw(canvas)
+        player_pos = CENTER + self.position
+        player_direction_pos = player_pos + self.direction.normalized() * (self.size + 5)
+        direction_end_pos_1 = player_pos + self.direction.normalized().rotated(0.5) * (self.size + 1)
+        direction_end_pos_2 = player_pos + self.direction.normalized().rotated(-0.5) * (self.size + 1)
+        pygame.draw.line(
+            canvas,
+            BLACK,
+            (player_direction_pos.x, player_direction_pos.y),
+            (direction_end_pos_1.x, direction_end_pos_1.y),
+            width=2
+        )
+        pygame.draw.line(
+            canvas,
+            BLACK,
+            (player_direction_pos.x, player_direction_pos.y),
+            (direction_end_pos_2.x, direction_end_pos_2.y),
+            width=2
+        )
+
+    def observe_direction(self):
+        return np.array([self.direction.x, self.direction.y], dtype=np.float32)
+
+    def observe_angular_speed(self):
+        return np.array([self.angular_speed, ], dtype=np.float32)
+
+    def get_angular_acceleration(self):
+        # assume no resistance force for turning
+        return self.angular_acceleration
+
+    def act(self, action, ball):
+        heading_factor_move = (1 - Vec2d.dot(self.direction.normalized(), self.speed.normalized())) / 2 # 0-1 value
+        move_acceleration = Vec2d(*action[0:2] * self.max_acceleration)
+        max_acceleration = self.max_acceleration \
+                           - heading_factor_move * (self.max_acceleration - self.max_backward_acceleration)
+        if move_acceleration.length > max_acceleration:
+            move_acceleration = move_acceleration.normalized() * max_acceleration
+        self.acceleration = move_acceleration
+
+        kick_momentum = Vec2d(*action[2:4] * self.max_momentum)
+        if kick_momentum.length > self.max_momentum:
+            kick_momentum = kick_momentum.normalized() * self.max_momentum
+
+        turn_acceleration = action[4] * self.max_angular_acceleration
+        if turn_acceleration > self.max_angular_acceleration:
+            turn_acceleration = self.max_angular_acceleration
+        if turn_acceleration < -self.max_angular_acceleration:
+            turn_acceleration = -self.max_angular_acceleration
+        self.angular_acceleration = turn_acceleration
+
+        # v2: heading control
+        heading_factor_kick = (1 - Vec2d.dot(self.direction.normalized(), kick_momentum.normalized())) / 2 # 0-1 value
+
+        # adjust noise factor according to player speed
+        speed_factor = self.speed.length / self.max_speed * self.speed_uncertainty
+        strength_factor = kick_momentum.length / self.max_momentum
+        direction_factor = (self.direction_uncertainty + heading_factor_kick * self.heading_direction_uncertainty) \
+                           * strength_factor * speed_factor
+        power_factor = (self.power_uncertainty + heading_factor_kick * self.heading_power_uncertainty) \
+                       * strength_factor * speed_factor
+
+        # randomize direction
+        direction_noise = np.random.normal() * direction_factor
+        kick_momentum = kick_momentum.rotated(direction_noise)
+
+        # randomize power
+        power_noise = np.random.normal() * power_factor
+        adjusted_momentum = kick_momentum.length + power_noise - heading_factor_kick * self.heading_power_difficulty
+        kick_momentum = kick_momentum.normalized() * min(max(0, adjusted_momentum), self.max_momentum)
+
+        kick_momentum += kick_momentum.normalized() * kick_momentum.normalized().dot(self.speed) * RUNUP_FACTOR 
+        # Kick the ball if in range
+        if (self.position - ball.position).length < self.kick_range:
+            ball.kicked(kick_momentum)
+
+
+    def update(self):
+        # angular update
+        angular_acceleration = self.get_angular_acceleration()
+        self.angular_speed = self.angular_speed + angular_acceleration * deltaTime
+        if self.angular_speed > self.max_angular_speed:
+            self.angular_speed = self.max_angular_speed
+        if self.angular_speed < -self.max_angular_speed:
+            self.angular_speed = -self.max_angular_speed
+        self.direction = self.direction.rotated(self.angular_speed * deltaTime)
+
+        # modify speed limit based on moving direction
+        heading_factor_move = (1 - Vec2d.dot(self.direction.normalized(), self.speed.normalized())) / 2 # 0-1 value
+
+        acceleration = self.get_acceleration()
+        self.speed = self.speed + acceleration * deltaTime
+        max_speed = self.max_speed - heading_factor_move * (self.max_speed - self.max_backward_speed)
+        if self.speed.length > max_speed:
+            self.speed = self.speed.normalized() * max_speed
+
+        old_position = self.position
+        old_fix_x, old_fix_y = self.fix_position()
+
+        self.position = self.position + self.speed * deltaTime
+        fix_x, fix_y = self.fix_position()
+        if fix_x or fix_y:
+            self.speed = Vec2d.zero()
+            if old_fix_x or old_fix_y:
+                self.position = old_position
 
 

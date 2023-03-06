@@ -8,3 +8,7 @@ register(
     id="football2d/SelfTraining-v1",
     entry_point="football2d.envs:SelfTraining_v1",
 )
+register(
+    id="football2d/SelfTraining-v2",
+    entry_point="football2d.envs:SelfTraining_v2",
+)

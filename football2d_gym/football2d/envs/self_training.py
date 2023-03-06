@@ -4,7 +4,7 @@ import pygame
 import numpy as np
 from pymunk import Vec2d
 from football2d.envs.ball import Ball
-from football2d.envs.player import Player_v0, Player_v1
+from football2d.envs.player import Player_v0, Player_v1, Player_v2
 from pprint import pprint
 import ipdb
 
@@ -56,10 +56,10 @@ class SelfTraining_v0(gym.Env):
             }
         )
 
-        # (2, 2) continuous action space
-        # first vector is player moving acceleration, along x and y
-        # second vector is player kicking momentum, along x and y
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2, 2), dtype=np.float32)
+        # 4 continuous action space
+        # first two is player moving acceleration, along x and y
+        # second two is player kicking momentum, along x and y
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(4, ), dtype=np.float32)
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -419,10 +419,10 @@ class SelfTraining_v1(SelfTraining_v0):
     def __init__(self, render_mode=None, time_limit=120, randomize_position=False):
         super().__init__(render_mode, time_limit, randomize_position)
         if randomize_position:
-            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)), can_be_out=True)
             self.player = Player_v1(Vec2d(*np.random.randint(-300, 300, 2)))
         else:
-            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0))
+            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0), can_be_out=True)
             self.player = Player_v1(Vec2d(-100, 0))
 
     def step(self, action):
@@ -457,5 +457,45 @@ class SelfTraining_v1(SelfTraining_v0):
             self._render_frame()
 
         return observation, reward, terminated, truncated, info
+
+
+class SelfTraining_v2(SelfTraining_v1):
+    metadata = {"render_modes": ["human"], "render_fps": 50}
+
+    def __init__(self, render_mode=None, time_limit=120, randomize_position=False):
+        super().__init__(render_mode, time_limit, randomize_position)
+        if randomize_position:
+            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)), can_be_out=True)
+            self.player = Player_v2(Vec2d(*np.random.randint(-300, 300, 2)))
+        else:
+            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0), can_be_out=True)
+            self.player = Player_v2(Vec2d(-100, 0))
+
+        self.observation_space = spaces.Dict(
+            {
+                "ball_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+                "ball_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+                "player_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+                "player_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+                "player_direction": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+                "player_angular_speed": spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
+            }
+        )
+
+        # 5 continuous action space
+        # first two is player moving acceleration, along x and y
+        # second two is player kicking momentum, along x and y
+        # fifth is player angular acceleration
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(5, ), dtype=np.float32)
+
+    def _get_obs(self):
+        return {
+                "ball_position": self.ball.observe_position(),
+                "ball_speed": self.ball.observe_speed(),
+                "player_position": self.player.observe_position(),
+                "player_speed": self.player.observe_speed(),
+                "player_direction": self.player.observe_direction(),
+                "player_angular_speed": self.player.observe_angular_speed(),
+               }
 
 
