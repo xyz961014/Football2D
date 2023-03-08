@@ -39,8 +39,10 @@ class SelfTraining_v0(gym.Env):
         self.window_height = 900  # The size of the PyGame window
         self.center_point = CENTER
 
+        self.randomize_position = randomize_position
+
         # Position of ball and player are relative to the center point
-        if randomize_position:
+        if self.randomize_position:
             self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
             self.player = Player_v0(Vec2d(*np.random.randint(-300, 300, 2)))
         else:
@@ -111,6 +113,15 @@ class SelfTraining_v0(gym.Env):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
+        # Position of ball and player are relative to the center point
+        if self.randomize_position:
+            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.player = Player_v0(Vec2d(*np.random.randint(-300, 300, 2)))
+        else:
+            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0))
+            self.player = Player_v0(Vec2d(-100, 0))
+        self.time = 0
+
         observation = self._get_obs()
         info = self._get_info()
 
@@ -135,10 +146,10 @@ class SelfTraining_v0(gym.Env):
 
         if self.ball.goal: 
             if self.ball.speed.length == 0:
-                print("Game terminated. Goal.")
+                #print("Game terminated. Goal.")
                 terminated = True
         if self.time > self.time_limit:
-            print("Game truncated. Reach time limit.")
+            #print("Game truncated. Reach time limit.")
             truncated = True
 
         observation = self._get_obs()

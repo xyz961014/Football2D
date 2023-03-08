@@ -124,7 +124,7 @@ class Player_v0(object):
             self.position = Vec2d(self.position.x, y)
             fix_y = self.position.y <= -680 / 2 or self.position.y >= 680 / 2
         else:
-            if self.goal:
+            if self.in_the_net():
                 y = self.position.y
                 if y <= -75 / 2:
                     y = -75 / 2
@@ -172,6 +172,18 @@ class Player_v0(object):
         # Kick the ball if in range
         if (self.position - ball.position).length < self.kick_range:
             ball.kicked(kick_momentum)
+
+    def in_the_net(self, position=None):
+        if position is None:
+            position = self.position
+        home_goal = False # ball in the right net
+        away_goal = False # ball in the left net
+        if 1050 / 2 < position.x < 1050 / 2 + 35 and -75 / 2 < position.y < 75 / 2:
+            home_goal = True
+        if -1050 / 2 - 35 < position.x < -1050 / 2 and -75 / 2 < position.y < 75 / 2:
+            away_goal = True
+
+        return home_goal or away_goal
 
     def update(self):
         acceleration = self.get_acceleration()
