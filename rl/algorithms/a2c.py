@@ -113,7 +113,8 @@ class A2C(nn.Module):
         if x.__class__.__name__ in ["dict", "OrderedDict"]:
             #x = np.array([state if state.ndim == 2 else state[None, :] for key, state in x.items()])
             #x = torch.Tensor(x).permute(1, 0, 2).reshape(self.n_envs, -1).to(self.device)
-            x = torch.cat(list(x.values()), axis=1).to(self.device)
+            tensors = [v.unsqueeze(0) if v.dim() == 1 else v for v in x.values()]
+            x = torch.cat(tensors, axis=1).to(self.device)
         else:
             x = torch.Tensor(x).to(self.device)
         state_values = self.critic(x)  # shape: [n_envs,]
@@ -121,7 +122,7 @@ class A2C(nn.Module):
         return (state_values, action_logits_vec)
 
     def select_action(
-        self, x: np.ndarray
+        self, states: torch.Tensor
     ) -> tuple([torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]):
         """
         Returns a tuple of the chosen actions and the log-probs of those actions.
@@ -134,7 +135,7 @@ class A2C(nn.Module):
             action_log_probs: A tensor with the log-probs of the actions, with shape [n_steps_per_update, n_envs].
             state_values: A tensor with the state values, with shape [n_steps_per_update, n_envs].
         """
-        state_values, action_logits = self.forward(x)
+        state_values, action_logits = self.forward(states)
         action_pd = self.dist(logits=action_logits)
         if self.determinstic:
             actions = action_pd.mode()
@@ -145,17 +146,19 @@ class A2C(nn.Module):
 
         return (actions, action_log_probs, state_values, entropy)
 
+    def evaluate_actions(self, states, actions):
+        state_values, action_logits = self.forward(states)
+        dist = self.dist(logits=action_logits)
+
+        action_log_probs = dist.log_prob(actions)
+        dist_entropy = dist.entropy().mean()
+
+        return state_values, action_log_probs, dist_entropy
+
     def get_losses(
         self,
-        rewards: torch.Tensor,
-        action_log_probs: torch.Tensor,
-        value_preds: torch.Tensor,
-        entropy: torch.Tensor,
-        masks: torch.Tensor,
-        gamma: float,
-        lam: float,
+        memory,
         ent_coef: float,
-        device: torch.device,
     ) -> tuple([torch.Tensor, torch.Tensor]):
         """
         Computes the loss of a minibatch (transitions collected in one sampling phase) for actor and critic
@@ -176,17 +179,15 @@ class A2C(nn.Module):
             critic_loss: The critic loss for the minibatch.
             actor_loss: The actor loss for the minibatch.
         """
-        T = len(rewards)
-        advantages = torch.zeros(T, self.n_envs, device=device)
+        #advantages = memory.advantages
+        #action_log_probs = memory.action_log_probs
+        #entropy = self.dist(memory.actions[-1]).entropy()
 
-        # compute the advantages using GAE
-        gae = 0.0
-        for t in reversed(range(T - 1)):
-            td_error = (
-                rewards[t] + gamma * masks[t] * value_preds[t + 1] - value_preds[t]
-            )
-            gae = td_error + gamma * lam * masks[t] * gae
-            advantages[t] = gae
+        states = memory.concat_states()
+        state_values, action_log_probs, entropy = self.evaluate_actions(states, memory.actions)
+        value_preds = state_values.squeeze()
+
+        advantages = memory.returns - value_preds
 
         # calculate the loss of the minibatch for actor and critic
         critic_loss = advantages.pow(2).mean()

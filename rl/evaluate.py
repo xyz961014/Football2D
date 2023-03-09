@@ -17,6 +17,8 @@ sys.path.append(os.path.join(curr_path, "..", "football2d_gym"))
 
 import football2d
 from rl.algorithms.a2c import A2C
+from rl.envs import EnvPyTorchWrapper
+
 
 import ipdb
 
@@ -93,10 +95,12 @@ for episode in range(args.n_episodes):
                 turbulence_power=np.clip(
                     np.random.normal(loc=1.5, scale=1.0), a_min=0.01, a_max=1.99
                 ),
-                max_episode_steps=500,
+                max_episode_steps=2000,
             )
         else:
-            env = gym.make("LunarLanderContinuous-v2", render_mode="human", max_episode_steps=1000)
+            env = gym.make("LunarLanderContinuous-v2", render_mode="human", max_episode_steps=2000)
+
+    env = EnvPyTorchWrapper(env, device)
 
     # get an initial state
     state, info = env.reset()
@@ -111,7 +115,7 @@ for episode in range(args.n_episodes):
             action, _, _, _ = agent.select_action(state)
 
         # perform the action A_{t} in the environment to get S_{t+1} and R_{t+1}
-        state, reward, terminated, truncated, info = env.step(action.squeeze().cpu().numpy())
+        state, reward, terminated, truncated, info = env.step(action.squeeze())
         episode_reward += reward
 
         # update if the environment is done

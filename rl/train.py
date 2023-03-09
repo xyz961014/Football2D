@@ -21,6 +21,7 @@ sys.path.append(os.path.join(curr_path, "..", "football2d_gym"))
 import football2d
 from rl.algorithms.a2c import A2C
 from rl.envs import VectorEnvPyTorchWrapper, PyTorchRecordEpisodeStatistics
+from rl.storage import TrainingMemory
 
 import ipdb
 
@@ -131,36 +132,35 @@ agent = A2C(args.obs_shape, args.action_shape, args.action_space_type,
 # create a wrapper environment to save episode returns and episode lengths
 envs_wrapper = PyTorchRecordEpisodeStatistics(envs, deque_size=args.n_envs * args.n_updates, device=device)
 
+
 episode_rewards = deque(maxlen=args.n_envs)
 episode_lengths = deque(maxlen=args.n_envs)
+
+memory = TrainingMemory(args.n_steps_per_update, args.n_envs, args.obs_shape, args.action_shape, device)
+
+states, info = envs_wrapper.reset(seed=args.seed)
+memory.states.append(states)
+
 
 # train the agent
 for sample_phase in tqdm(range(args.n_updates)):
 
     # we don't have to reset the envs, they just continue playing
     # until the episode is over and then reset automatically
-
-    # reset lists that collect experiences of an episode (sample phase)
-    ep_value_preds = torch.zeros(args.n_steps_per_update, args.n_envs, device=device)
-    ep_rewards = torch.zeros(args.n_steps_per_update, args.n_envs, device=device)
-    ep_action_log_probs = torch.zeros(args.n_steps_per_update, args.n_envs, device=device)
-    masks = torch.zeros(args.n_steps_per_update, args.n_envs, device=device)
-
+    #
     # at the start of training reset all envs to get an initial state
-    if sample_phase == 0:
-        states, info = envs_wrapper.reset(seed=args.seed)
 
     # play n steps in our parallel environments to collect data
     for step in range(args.n_steps_per_update):
 
         # select an action A_{t} using S_{t} as input for the agent
-        actions, action_log_probs, state_value_preds, entropy = agent.select_action(
-            states
-        )
-
+        with torch.no_grad():
+            actions, action_log_probs, state_value_preds, entropy = agent.select_action(
+                states
+            )
         # perform the action A_{t} in the environment to get S_{t+1} and R_{t+1}
         states, rewards, terminated, truncated, infos = envs_wrapper.step(
-            actions.detach()
+            actions
         )
 
         if "_episode" in infos.keys() and "episode":
@@ -169,31 +169,29 @@ for sample_phase in tqdm(range(args.n_updates)):
                     episode_rewards.append(infos['episode']['r'][ep_ind])
                     episode_lengths.append(infos['episode']['l'][ep_ind])
 
-        ep_value_preds[step] = torch.squeeze(state_value_preds)
-        ep_rewards[step] = rewards
-        ep_action_log_probs[step] = action_log_probs
-
         # add a mask (for the return calculation later);
         # for each env the mask is 1 if the episode is ongoing and 0 if it is terminated (not by truncation!)
 
         #masks[step] = torch.tensor([not term for term in terminated])
-        masks[step] = torch.cat([term.unsqueeze(0) for term in terminated]).eq(0).float()
+        masks = torch.cat([term.unsqueeze(0) for term in terminated]).eq(0).float().to(device)
+
+        memory.insert(states, actions, action_log_probs, state_value_preds, rewards, masks)
+
+    # get next value V(s_{t+1})
+    with torch.no_grad():
+        next_state_value, _ = agent.forward(states)
+        next_state_value = next_state_value.squeeze().detach()
 
     # calculate the losses for actor and critic
-    critic_loss, actor_loss = agent.get_losses(
-        ep_rewards,
-        ep_action_log_probs,
-        ep_value_preds,
-        entropy,
-        masks,
-        args.gamma,
-        args.lam,
-        args.ent_coef,
-        device,
-    )
+    memory.compute_returns_and_advantages(args.gamma, args.lam, next_state_value)
+
+    critic_loss, actor_loss = agent.get_losses(memory, args.ent_coef)
 
     # update the actor and critic networks
     agent.update_parameters(critic_loss, actor_loss)
+
+    # clear memory
+    memory.after_update()
 
     # log the losses and entropy
     if len(episode_lengths) > 0:

@@ -2,9 +2,9 @@ import numpy as np
 import torch
 import gym
 import ipdb
-from pprint import pprint
 
-class VectorEnvPyTorchWrapper(gym.Wrapper):
+
+class EnvPyTorchWrapper(gym.Wrapper):
     def __init__(self, env, device):
         super().__init__(env)
         self.device = device
@@ -12,8 +12,26 @@ class VectorEnvPyTorchWrapper(gym.Wrapper):
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
         obs = self.convert_nparray_to_tensor(obs)
-
         return obs, info
+
+    def step(self, action):
+        action = action.cpu().numpy()
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        obs = self.convert_nparray_to_tensor(obs)
+        return obs, reward, terminated, truncated, info
+
+    def convert_nparray_to_tensor(self, array_or_dict):
+        if array_or_dict.__class__.__name__ in ["OrderedDict", "dict"]:
+            for key, value in array_or_dict.items():
+                array_or_dict[key] = self.convert_nparray_to_tensor(value)
+        else:
+            array_or_dict = torch.from_numpy(array_or_dict).float().to(self.device)
+        return array_or_dict
+
+
+class VectorEnvPyTorchWrapper(EnvPyTorchWrapper):
+    def __init__(self, env, device):
+        super().__init__(env, device)
 
     def step(self, actions):
         self.step_async(actions)
@@ -31,13 +49,6 @@ class VectorEnvPyTorchWrapper(gym.Wrapper):
         truncated = self.convert_nparray_to_tensor(truncated)
         return obs, reward, terminated, truncated, info
 
-    def convert_nparray_to_tensor(self, array_or_dict):
-        if array_or_dict.__class__.__name__ in ["OrderedDict", "dict"]:
-            for key, value in array_or_dict.items():
-                array_or_dict[key] = self.convert_nparray_to_tensor(value)
-        else:
-            array_or_dict = torch.from_numpy(array_or_dict).float().to(self.device)
-        return array_or_dict
 
 class PyTorchRecordEpisodeStatistics(gym.wrappers.RecordEpisodeStatistics):
     def __init__(self, env, deque_size, device):
