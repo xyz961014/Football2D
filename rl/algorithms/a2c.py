@@ -36,12 +36,14 @@ class A2C(nn.Module):
         actor_lr: float,
         init_scale: float,
         n_envs: int,
-        train_scale=True
+        train_scale=True,
+        normalize_factor=1
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
         super().__init__()
         self.device = device
         self.n_envs = n_envs
+        self.normalize_factor = normalize_factor
 
         self.determinstic = False
 
@@ -89,7 +91,7 @@ class A2C(nn.Module):
         self.determinstic = False
 
     def normalize_states(self, states):
-        return states * 1e-3
+        return states * self.normalize_factor
 
     def forward(self, states: np.ndarray) -> tuple([torch.Tensor, torch.Tensor]):
         """

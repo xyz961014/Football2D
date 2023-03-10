@@ -29,8 +29,10 @@ parser.add_argument("--algorithm", type=str, default="a2c",
                     choices=["a2c"],
                     help="training algorithm to choose")
 # env
-parser.add_argument("--lunarlander", action="store_true",
-                    help="experiment with lunarlander")
+parser.add_argument("--env_name", type=str, default="default",
+                    choices=["default",
+                             "SelfTraining-v0", "SelfTraining-v1", "SelfTraining-v2"],
+                    help="Football2d environment to choose")
 parser.add_argument("--time_limit", type=int, default=10,
                     help="time limit of football2d")
 # params
@@ -38,10 +40,12 @@ parser.add_argument("--n_episodes", type=int, default=10,
                     help="number of episodes")
 parser.add_argument("--randomize_domain", action="store_true",
                     help="randomize env params")
+parser.add_argument("--silent", action="store_true",
+                    help="do not run it in human render mode")
 parser.add_argument("--seed", type=int, default=42,
                     help="random seed")
 # load model
-parser.add_argument("--load_dir", type=str, default="saved_models/a2c/default",
+parser.add_argument("--load_dir", type=str, default="saved_models/LunarLanderContinuous-v2/a2c/default",
                     help="directory to load model")
 
 args = parser.parse_args()
@@ -65,27 +69,41 @@ agent = A2C(model_args["obs_shape"],
             model_args["init_sample_scale"],
             n_envs=1)
 
+if model_args["lunarlander"]:
+    full_env_name = model_args["env_name"]
+else:
+    if args.env_name == "default":
+        full_env_name = "football2d/{}".format(model_args["env_name"])
+    else:
+        full_env_name = "football2d/{}".format(args.env_name)
+
+if args.silent:
+    render_mode = None
+else:
+    render_mode = "human"
+
 agent.actor.load_state_dict(torch.load(actor_weights_path))
 agent.critic.load_state_dict(torch.load(critic_weights_path))
 agent.eval()
 
 
 episode_rewards = []
+episode_lengths = []
 for episode in range(args.n_episodes):
 
     # create a new sample environment to get new random parameters
-    if args.randomize_domain:
-        env = gym.make("football2d/SelfTraining-v0", render_mode="human", randomize_position=True, 
-                       time_limit=args.time_limit)
+    if not model_args["lunarlander"]:
+        if args.randomize_domain:
+            env = gym.make(full_env_name, render_mode=render_mode, randomize_position=True, 
+                           time_limit=args.time_limit)
+        else:
+            env = gym.make(full_env_name, render_mode=render_mode, randomize_position=False, 
+                           time_limit=args.time_limit)
     else:
-        env = gym.make("football2d/SelfTraining-v0", render_mode="human", randomize_position=False, 
-                       time_limit=args.time_limit)
-
-    if args.lunarlander:
         if args.randomize_domain:
             env = gym.make(
-                "LunarLanderContinuous-v2",
-                render_mode="human",
+                full_env_name,
+                render_mode=render_mode,
                 gravity=np.clip(
                     np.random.normal(loc=-10.0, scale=2.0), a_min=-11.99, a_max=-0.01
                 ),
@@ -99,7 +117,7 @@ for episode in range(args.n_episodes):
                 max_episode_steps=2000,
             )
         else:
-            env = gym.make("LunarLanderContinuous-v2", render_mode="human", max_episode_steps=2000)
+            env = gym.make(full_env_name, render_mode=render_mode, max_episode_steps=2000)
 
     env = EnvPyTorchWrapper(env, device)
 
@@ -109,6 +127,7 @@ for episode in range(args.n_episodes):
     # play one episode
     done = False
     episode_reward = 0
+    episode_length = 0
     while not done:
 
         # select an action A_{t} using S_{t} as input for the agent
@@ -118,14 +137,19 @@ for episode in range(args.n_episodes):
         # perform the action A_{t} in the environment to get S_{t+1} and R_{t+1}
         state, reward, terminated, truncated, info = env.step(action.squeeze())
         episode_reward += reward
+        episode_length += 1
 
         # update if the environment is done
         done = terminated or truncated
 
-    print("Episode {} reward: {:.3f}".format(episode + 1, episode_reward))
+    print("Episode {:3} reward: {:5.3f} | Episode length: {:5}".format(episode + 1, episode_reward, episode_length))
     episode_rewards.append(episode_reward)
+    episode_lengths.append(episode_length)
 
-print("Average episode reward: {:.3f} +- {:.3f}".format(np.mean(episode_rewards), np.std(episode_rewards)))
+print("Average episode reward: {:5.3f} +- {:5.3f} | Average episode length: {:5.3f} +- {:5.3f}".format(
+        np.mean(episode_rewards), np.std(episode_rewards),
+        np.mean(episode_lengths), np.std(episode_lengths))
+     )
 
 env.close()
 

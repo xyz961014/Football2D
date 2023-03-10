@@ -83,29 +83,11 @@ parser.add_argument("--save_interval", type=int, default=500,
 
 args = parser.parse_args()
 
-writer_path = os.path.join("logs", args.algorithm, args.name)
-writer = SummaryWriter(writer_path)
-
 # set the device
 if args.use_cuda:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 else:
     device = torch.device("cpu")
-
-# save model dir
-save_dir = os.path.join("saved_models", args.algorithm, args.name)
-if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
-
-def save_model(dir_name):
-    hyperparams_path = os.path.join(dir_name, "hyperparams.json")
-    actor_weights_path = os.path.join(dir_name, "actor_weights.pt")
-    critic_weights_path = os.path.join(dir_name, "critic_weights.pt")
-    
-    json.dump(args.__dict__, open(hyperparams_path, "w"), indent=4)
-    torch.save(agent.actor.state_dict(), actor_weights_path)
-    torch.save(agent.critic.state_dict(), critic_weights_path)
-    print("Successfully save model in {}".format(dir_name))
 
 # set the environment
 full_env_name = "football2d/{}".format(args.env_name)
@@ -118,11 +100,12 @@ else:
                            time_limit=args.time_limit)
 
 if args.lunarlander:
+    args.env_name = "LunarLanderContinuous-v2"
     if args.randomize_domain:
         envs = gym.vector.AsyncVectorEnv(
             [
                 lambda: gym.make(
-                    "LunarLanderContinuous-v2",
+                    args.env_name,
                     gravity=np.clip(
                         np.random.normal(loc=-10.0, scale=1.0), a_min=-11.99, a_max=-0.01
                     ),
@@ -140,7 +123,7 @@ if args.lunarlander:
         )
     
     else:
-        envs = gym.vector.make("LunarLanderContinuous-v2", num_envs=args.n_envs, max_episode_steps=1000)
+        envs = gym.vector.make(args.env_name, num_envs=args.n_envs, max_episode_steps=1000)
 
 envs = VectorEnvPyTorchWrapper(envs, device)
 
@@ -150,6 +133,31 @@ else:
     args.obs_shape = envs.single_observation_space.shape[0]
 args.action_shape = envs.single_action_space.shape[0]
 
+
+# save model dir
+save_dir = os.path.join("saved_models", args.env_name, args.algorithm, args.name)
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
+
+def save_model(dir_name):
+    hyperparams_path = os.path.join(dir_name, "hyperparams.json")
+    actor_weights_path = os.path.join(dir_name, "actor_weights.pt")
+    critic_weights_path = os.path.join(dir_name, "critic_weights.pt")
+    
+    json.dump(args.__dict__, open(hyperparams_path, "w"), indent=4)
+    torch.save(agent.actor.state_dict(), actor_weights_path)
+    torch.save(agent.critic.state_dict(), critic_weights_path)
+    print("Successfully save model in {}".format(dir_name))
+
+# init SummaryWriter
+writer_path = os.path.join("logs", args.env_name, args.algorithm, args.name)
+writer = SummaryWriter(writer_path)
+
+# add Text for hyperparams
+def pretty_json(hp):
+    json_hp = json.dumps(hp, indent=4)
+    return "".join("\t" + line for line in json_hp.splitlines(True))
+writer.add_text("hyperparams", pretty_json(args.__dict__))
 
 # init the agent
 agent = A2C(args.obs_shape, args.action_shape, args.hidden_size, 
