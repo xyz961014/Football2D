@@ -145,15 +145,17 @@ class SelfTraining_v0(gym.Env):
             reward = 0
 
         if self.ball.goal: 
-            if self.ball.speed.length == 0:
-                #print("Game terminated. Goal.")
-                terminated = True
+            #print("Game terminated. Goal.")
+            terminated = True
         if self.time > self.time_limit:
             #print("Game truncated. Reach time limit.")
             truncated = True
 
         observation = self._get_obs()
         info = self._get_info()
+
+        self.player.update()
+        self.ball.update([self.player])
 
         if self.render_mode == "human":
             self._render_frame()
@@ -423,8 +425,6 @@ class SelfTraining_v0(gym.Env):
 
 
         # draw the ball and the player
-        self.player.update()
-        self.ball.update([self.player])
         self.player.draw(canvas)
         self.ball.draw(canvas)
 

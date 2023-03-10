@@ -31,7 +31,7 @@ parser.add_argument("--algorithm", type=str, default="a2c",
 # env
 parser.add_argument("--lunarlander", action="store_true",
                     help="experiment with lunarlander")
-parser.add_argument("--time_limit", type=int, default=20,
+parser.add_argument("--time_limit", type=int, default=10,
                     help="time limit of football2d")
 # params
 parser.add_argument("--n_episodes", type=int, default=10,
@@ -58,10 +58,11 @@ critic_weights_path = os.path.join(args.load_dir, "critic_weights.pt")
 model_args = json.load(open(hyperparams_path, "r"))
 agent = A2C(model_args["obs_shape"], 
             model_args["action_shape"], 
-            model_args["action_space_type"], 
+            model_args["hidden_size"], 
             device, 
             model_args["critic_lr"], 
             model_args["actor_lr"],
+            model_args["init_sample_scale"],
             n_envs=1)
 
 agent.actor.load_state_dict(torch.load(actor_weights_path))

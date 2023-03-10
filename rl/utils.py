@@ -14,10 +14,11 @@ class FixedNormal(torch.distributions.Normal):
 
 
 class ScaleParameterizedNormal(nn.Module):
-    def __init__(self, shape):
+    def __init__(self, shape, init_scale=1.0):
         super().__init__()
         self.logstd = nn.Parameter(torch.zeros(shape))
+        self.init_scale = init_scale
 
     def forward(self, logits):
-        return FixedNormal(logits, self.logstd.exp())
+        return FixedNormal(logits, self.logstd.exp() * self.init_scale)
 

@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+from pprint import pprint
 
 import gym
 
@@ -22,6 +23,7 @@ import football2d
 from rl.algorithms.a2c import A2C
 from rl.envs import VectorEnvPyTorchWrapper, PyTorchRecordEpisodeStatistics
 from rl.storage import TrainingMemory
+from rl.rewards import get_auxiliary_reward_manager
 
 import ipdb
 
@@ -31,8 +33,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--algorithm", type=str, default="a2c",
                     choices=["a2c"],
                     help="training algorithm to choose")
+# environment
+parser.add_argument("--env_name", type=str, default="SelfTraining-v0",
+                    choices=["SelfTraining-v0", "SelfTraining-v1", "SelfTraining-v2"],
+                    help="Football2d environment to choose")
+parser.add_argument("--lunarlander", action="store_true",
+                    help="experiment with lunarlander")
 # environment hyperparams
-parser.add_argument("--n_envs", type=int, default=10,
+parser.add_argument("--n_envs", type=int, default=16,
                     help="number of envs")
 parser.add_argument("--n_updates", type=int, default=1000,
                     help="number of updates")
@@ -40,9 +48,7 @@ parser.add_argument("--n_steps_per_update", type=int, default=128,
                     help="number of steps per update")
 parser.add_argument("--randomize_domain", action="store_true",
                     help="randomize env params")
-parser.add_argument("--lunarlander", action="store_true",
-                    help="experiment with lunarlander")
-parser.add_argument("--time_limit", type=int, default=20,
+parser.add_argument("--time_limit", type=int, default=10,
                     help="time limit of football2d")
 # agent hyperparams
 parser.add_argument("--gamma", type=float, default=0.999,
@@ -55,14 +61,25 @@ parser.add_argument("--actor_lr", type=float, default=1e-3,
                     help="actor learning rate")
 parser.add_argument("--critic_lr", type=float, default=5e-3,
                     help="critic learning rate")
+parser.add_argument("--hidden_size", type=int, default=128,
+                    help="hidden size of actor and critic")
+# a2c
+parser.add_argument("--init_sample_scale", type=float, default=1.0,
+                    help="initial scale for normal sampling")
 # training setting
 parser.add_argument("--use_cuda", action="store_true",
                     help="use GPU")
 parser.add_argument("--seed", type=int, default=42,
                     help="random seed")
+parser.add_argument("--use_auxiliary_reward", action="store_true",
+                    help="use auxiliary reward")
+parser.add_argument("--auxiliary_reward_type", type=str, default="default",
+                    help="auxiliary reward type to choose")
 # save model
 parser.add_argument("--name", type=str, default="default",
                     help="model name to save")
+parser.add_argument("--save_interval", type=int, default=500,
+                    help="interval steps for saving models")
 
 args = parser.parse_args()
 
@@ -75,11 +92,29 @@ if args.use_cuda:
 else:
     device = torch.device("cpu")
 
+# save model dir
+save_dir = os.path.join("saved_models", args.algorithm, args.name)
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
+
+def save_model(dir_name):
+    hyperparams_path = os.path.join(dir_name, "hyperparams.json")
+    actor_weights_path = os.path.join(dir_name, "actor_weights.pt")
+    critic_weights_path = os.path.join(dir_name, "critic_weights.pt")
+    
+    json.dump(args.__dict__, open(hyperparams_path, "w"), indent=4)
+    torch.save(agent.actor.state_dict(), actor_weights_path)
+    torch.save(agent.critic.state_dict(), critic_weights_path)
+    print("Successfully save model in {}".format(dir_name))
+
+# set the environment
+full_env_name = "football2d/{}".format(args.env_name)
 if args.randomize_domain:
-    envs = gym.vector.make("football2d/SelfTraining-v0", num_envs=args.n_envs, randomize_position=True,
+    envs = gym.vector.make(full_env_name, num_envs=args.n_envs, randomize_position=True,
                            time_limit=args.time_limit)
 else:
-    envs = gym.vector.make("football2d/SelfTraining-v0", num_envs=args.n_envs, randomize_position=False, 
+    envs = gym.vector.make(full_env_name, num_envs=args.n_envs, randomize_position=False, 
+                           #render_mode="human",
                            time_limit=args.time_limit)
 
 if args.lunarlander:
@@ -113,28 +148,27 @@ if envs.single_observation_space.__class__.__name__ == "Dict":
     args.obs_shape = sum([obs_box.shape[0] for key, obs_box in envs.single_observation_space.items()])
 else:
     args.obs_shape = envs.single_observation_space.shape[0]
-args.action_space_type = envs.single_action_space.__class__.__name__
 args.action_shape = envs.single_action_space.shape[0]
-#if args.action_space_type == "Discrete":
-#    args.action_shape = envs.single_action_space.n
-#elif args.action_space_type == "Box":
-#    args.action_shape = envs.single_action_space.shape[0]
-#elif args.action_space_type == "MultiBinary":
-#    args.action_shape = envs.single_action_space.shape[0]
-#else:
-#    raise NotImplementedError
 
 
 # init the agent
-agent = A2C(args.obs_shape, args.action_shape, args.action_space_type, 
-            device, args.critic_lr, args.actor_lr, args.n_envs)
+agent = A2C(args.obs_shape, args.action_shape, args.hidden_size, 
+            device, args.critic_lr, args.actor_lr, args.init_sample_scale, args.n_envs)
 
+
+if args.use_auxiliary_reward:
+    auxiliary_reward_manager = get_auxiliary_reward_manager(args.env_name, device, args.auxiliary_reward_type)
+else:
+    auxiliary_reward_manager = None
 # create a wrapper environment to save episode returns and episode lengths
-envs_wrapper = PyTorchRecordEpisodeStatistics(envs, deque_size=args.n_envs * args.n_updates, device=device)
+envs_wrapper = PyTorchRecordEpisodeStatistics(envs, deque_size=args.n_envs * args.n_updates, device=device,
+                                              auxiliary_reward_manager=auxiliary_reward_manager)
 
 
 episode_rewards = deque(maxlen=args.n_envs)
 episode_lengths = deque(maxlen=args.n_envs)
+episode_final_observations = deque(maxlen=args.n_envs)
+episode_final_infos = deque(maxlen=args.n_envs)
 
 memory = TrainingMemory(args.n_steps_per_update, args.n_envs, args.obs_shape, args.action_shape, device)
 
@@ -143,7 +177,7 @@ memory.states.append(states)
 
 
 # train the agent
-for sample_phase in tqdm(range(args.n_updates)):
+for update_step in tqdm(range(args.n_updates)):
 
     # we don't have to reset the envs, they just continue playing
     # until the episode is over and then reset automatically
@@ -168,6 +202,8 @@ for sample_phase in tqdm(range(args.n_updates)):
                 for ep_ind in np.flatnonzero(infos["_episode"]):
                     episode_rewards.append(infos['episode']['r'][ep_ind])
                     episode_lengths.append(infos['episode']['l'][ep_ind])
+                    episode_final_observations.append(infos["final_observation"][ep_ind])
+                    episode_final_infos.append(infos["final_info"][ep_ind])
 
         # add a mask (for the return calculation later);
         # for each env the mask is 1 if the episode is ongoing and 0 if it is terminated (not by truncation!)
@@ -195,35 +231,47 @@ for sample_phase in tqdm(range(args.n_updates)):
 
     # log the losses and entropy
     if len(episode_lengths) > 0:
-        writer.add_scalar("training/episode_length", np.mean(episode_lengths), sample_phase)
+        writer.add_scalar("training/episode_length", np.mean(episode_lengths), update_step)
     if len(episode_rewards) > 0:
-        writer.add_scalar("training/episode_reward", np.mean(episode_rewards), sample_phase)
-    writer.add_scalar("training/entropy", entropy.mean(), sample_phase)
-    writer.add_scalar("training/actor_loss", actor_loss, sample_phase)
-    writer.add_scalar("training/critic_loss", critic_loss, sample_phase)
+        writer.add_scalar("training/episode_reward", np.mean(episode_rewards), update_step)
+    writer.add_scalar("training/entropy", entropy.mean(), update_step)
+    writer.add_scalar("training/actor_loss", actor_loss, update_step)
+    writer.add_scalar("training/critic_loss", critic_loss, update_step)
     # observation
-    writer.add_scalar("observation/normal_std", agent.dist.logstd.exp().mean(), sample_phase)
+    writer.add_scalar("observation/normal_std", agent.dist.logstd.exp().mean() * agent.dist.init_scale, update_step)
+    # final observation
+    if len(episode_final_observations) > 0:
+        if episode_final_observations[0].__class__.__name__ in ["dict"]:
+            for obs_key in episode_final_observations[0].keys():
+                obs_value = np.concatenate([obs[obs_key][None, :] for obs in episode_final_observations])
+                obs_value_mean = np.mean(obs_value, axis=0)
+                writer.add_scalar("final_state/{}.x".format(obs_key), obs_value_mean[0], update_step)
+                writer.add_scalar("final_state/{}.y".format(obs_key), obs_value_mean[1], update_step)
+        else:
+            obs_value = np.concatenate([obs[None, :] for obs in episode_final_observations])
+            obs_value_mean = np.mean(obs_value, axis=0)
+            for obs_ind, obs_val in enumerate(obs_value_mean):
+                writer.add_scalar("final_state/state.{}".format(obs_ind), obs_val, update_step)
+    # final info
+    if len(episode_final_infos) > 0:
+        for info_key in episode_final_infos[0].keys():
+            info_value = [info[info_key] for info in episode_final_infos]
+            info_value_mean = np.mean(info_value)
+            writer.add_scalar("final_info/{}".format(info_key), info_value_mean, update_step)
+
+    if update_step > 0 and update_step % args.save_interval == 0:
+        ckp_dir_name = "ckp_{}".format(update_step)
+        ckp_dir = os.path.join(save_dir, ckp_dir_name)
+        if not os.path.exists(ckp_dir):
+            os.mkdir(ckp_dir)
+        save_model(ckp_dir)
 
 
 
 
-# save model
-save_dir = os.path.join("saved_models", args.algorithm, args.name)
-if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
-
-hyperparams_path = os.path.join(save_dir, "hyperparams.json")
-actor_weights_path = os.path.join(save_dir, "actor_weights.pt")
-critic_weights_path = os.path.join(save_dir, "critic_weights.pt")
-
-json.dump(args.__dict__, open(hyperparams_path, "w"), indent=4)
-torch.save(agent.actor.state_dict(), actor_weights_path)
-torch.save(agent.critic.state_dict(), critic_weights_path)
-print("Successfully save model in {}".format(save_dir))
-
+save_model(save_dir)
 
 # end training
 envs.close()
 writer.close()
-
 

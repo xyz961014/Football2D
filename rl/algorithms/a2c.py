@@ -30,49 +30,38 @@ class A2C(nn.Module):
         self,
         n_features: int,
         n_actions: int,
-        action_space_type: str,
+        hidden_size: int,
         device: torch.device,
         critic_lr: float,
         actor_lr: float,
+        init_scale: float,
         n_envs: int,
+        train_scale=True
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
         super().__init__()
         self.device = device
         self.n_envs = n_envs
-        self.action_space_type = action_space_type
 
         self.determinstic = False
 
-        self.dist = ScaleParameterizedNormal((n_envs, n_actions)).to(self.device)
-
-        #if action_space_type == "Discrete":
-        #    self.dist = torch.distributions.Categorical  # implicitly uses softmax
-        #elif action_space_type == "Box":
-        #    #self.dist = lambda logits: torch.distributions.Normal(loc=logits, scale=self.logstd.expand_as(logits).exp())
-        #    self.dist = ScaleParameterizedNormal((n_envs, n_actions))
-        #elif action_space_type == "MultiBinary":
-        #    self.dist = torch.distributions.Bernoulli
-        #else:
-        #    raise NotImplementedError
-
+        self.dist = ScaleParameterizedNormal(shape=(n_envs, n_actions), init_scale=init_scale).to(self.device)
 
         critic_layers = [
-            nn.Linear(n_features, 32),
+            nn.Linear(n_features, hidden_size),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(32, 1),  # estimate V(s)
+            nn.Linear(hidden_size, 1),  # estimate V(s)
         ]
 
         actor_layers = [
-            nn.Linear(n_features, 32),
+            nn.Linear(n_features, hidden_size),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(
-                32, n_actions
-            ),  # estimate action logits
+            nn.Linear(hidden_size, n_actions),  
+            #nn.Tanh() # estimate action logits
         ]
 
         # define actor and critic networks
@@ -82,7 +71,7 @@ class A2C(nn.Module):
         # define optimizers for actor and critic
         critic_params = list(self.critic.parameters())
         actor_params = list(self.actor.parameters())
-        if hasattr(self.dist, "parameters"):
+        if train_scale and hasattr(self.dist, "parameters"):
             actor_params.extend(list(self.dist.parameters()))
         self.critic_optim = optim.RMSprop(critic_params, lr=critic_lr)
         self.actor_optim = optim.RMSprop(actor_params, lr=actor_lr)
@@ -99,7 +88,10 @@ class A2C(nn.Module):
         self.critic.train()
         self.determinstic = False
 
-    def forward(self, x: np.ndarray) -> tuple([torch.Tensor, torch.Tensor]):
+    def normalize_states(self, states):
+        return states * 1e-3
+
+    def forward(self, states: np.ndarray) -> tuple([torch.Tensor, torch.Tensor]):
         """
         Forward pass of the networks.
 
@@ -110,15 +102,15 @@ class A2C(nn.Module):
             state_values: A tensor with the state values, with shape [n_envs,].
             action_logits_vec: A tensor with the action logits, with shape [n_envs, n_actions].
         """
-        if x.__class__.__name__ in ["dict", "OrderedDict"]:
-            #x = np.array([state if state.ndim == 2 else state[None, :] for key, state in x.items()])
-            #x = torch.Tensor(x).permute(1, 0, 2).reshape(self.n_envs, -1).to(self.device)
-            tensors = [v.unsqueeze(0) if v.dim() == 1 else v for v in x.values()]
-            x = torch.cat(tensors, axis=1).to(self.device)
-        else:
-            x = torch.Tensor(x).to(self.device)
-        state_values = self.critic(x)  # shape: [n_envs,]
-        action_logits_vec = self.actor(x)  # shape: [n_envs, n_actions]
+        if states.__class__.__name__ in ["dict", "OrderedDict"]:
+            tensors = [v.unsqueeze(0) if v.dim() == 1 else v for v in states.values()]
+            states = torch.cat(tensors, axis=1).to(self.device)
+        elif type(states) is not torch.Tensor:
+            states = torch.Tensor(states).to(self.device)
+
+        normalized_states = self.normalize_states(states)
+        state_values = self.critic(normalized_states)  # shape: [n_envs,]
+        action_logits_vec = self.actor(normalized_states)  # shape: [n_envs, n_actions]
         return (state_values, action_logits_vec)
 
     def select_action(

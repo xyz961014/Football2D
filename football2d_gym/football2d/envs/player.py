@@ -150,9 +150,9 @@ class Player_v0(object):
     def get_action_strs(self):
         action = self.action if self.action is not None else np.zeros(5)
         action_strs = {}
-        action_strs["acceleration"]  = "{:20}: ({:8.2f}, {:8.2f})".format("Acceleration", 
+        action_strs["acceleration"]  = "{:20}: ({:8.4f}, {:8.4f})".format("Acceleration", 
                                                                           action[0], action[1])
-        action_strs["kick_momentum"] = "{:20}: ({:8.2f}, {:8.2f})".format("Kick momentum", 
+        action_strs["kick_momentum"] = "{:20}: ({:8.4f}, {:8.4f})".format("Kick momentum", 
                                                                           action[2], action[3])
         return action_strs
 

@@ -26,7 +26,10 @@ class TrainingMemory(object):
         self.step = 0
 
     def concat_states(self):
-        states = torch.cat(list(self.states)[:-1])
+        states = [torch.cat([v.unsqueeze(0) if v.dim() == 1 else v for v in states.values()]) 
+                  if states.__class__.__name__ in ["dict", "OrderedDict"] else states 
+                  for states in list(self.states)[:-1]]
+        states = torch.cat(states)
         return states.reshape(self.n_steps_per_update, self.n_envs, self.obs_shape)
 
     def insert(self, states, actions, action_log_probs, state_value_preds, rewards, masks):
