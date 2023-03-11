@@ -49,6 +49,7 @@ class SelfTraining_v0(gym.Env):
             self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0))
             self.player = Player_v0(Vec2d(-100, 0))
         self.time = 0
+        self.accumulated_reward = 0
 
         # Observations are dictionaries with the agent's and the target's location.
         # Each location is encoded as an element of {0, ..., `size`}^2, i.e. MultiDiscrete([size, size]).
@@ -134,16 +135,25 @@ class SelfTraining_v0(gym.Env):
     def step(self, action):
 
         self.time += timeDelta
-
-        self.player.act(action, self.ball)
         terminated = False
         truncated = False
+
+        self.player.act(action, self.ball)
+        self.player.update()
+        self.ball.update([self.player])
+
         if self.ball.home_goal:
             reward = 1
         elif self.ball.away_goal:
             reward = -1
         else:
             reward = 0
+
+        # extra negative reward if the player stays on the border
+        if self.player.fixed_on_border:
+            reward -= 0.1
+
+        self.accumulated_reward += reward
 
         if self.ball.goal: 
             #print("Game terminated. Goal.")
@@ -154,9 +164,6 @@ class SelfTraining_v0(gym.Env):
 
         observation = self._get_obs()
         info = self._get_info()
-
-        self.player.update()
-        self.ball.update([self.player])
 
         if self.render_mode == "human":
             self._render_frame()
@@ -372,14 +379,11 @@ class SelfTraining_v0(gym.Env):
                        name="time")
 
         # draw goal celebration
-        reward = 0
         if self.ball.goal:
             if self.ball.home_goal:
                 goal_colors = [self.player.color, WHITE]
-                reward = 1
             elif self.ball.away_goal:
                 goal_colors = [SKYBLUE, BLACK]
-                reward = -1
             pygame.draw.rect(
                 canvas,
                 goal_colors[int(self.time * 8) % 2],
@@ -396,10 +400,10 @@ class SelfTraining_v0(gym.Env):
                            name="goal")
 
         # print reward
-        self.draw_text("reward:{:2d}".format(reward), 
+        self.draw_text("reward:{:7.2f}".format(self.accumulated_reward), 
                        REWARD_TEXT_SIZE, 
                        font_name="consolas",
-                       x=1070, y=25, color=BLACK,
+                       x=1040, y=25, color=BLACK,
                        name="reward")
 
         # print state
@@ -479,26 +483,34 @@ class SelfTraining_v1(SelfTraining_v0):
     def step(self, action):
 
         self.time += timeDelta
-
-        self.player.act(action, self.ball)
         terminated = False
         truncated = False
+
+        self.player.act(action, self.ball)
+        self.player.update()
+        self.ball.update([self.player])
+
         if self.ball.home_goal:
             reward = 1
         elif self.ball.away_goal:
             reward = -1
         else:
             reward = 0
+        # extra negative reward if the player stays on the border
+        if self.player.fixed_on_border:
+            reward -= 0.1
+
+        self.accumulated_reward += reward
 
         if self.ball.goal: 
             if self.ball.speed.length == 0:
-                print("Game terminated. Goal.")
+                #print("Game terminated. Goal.")
                 terminated = True
         elif self.ball.out:
-            print("Game terminated. Out.")
+            #print("Game terminated. Out.")
             terminated = True
-        if self.time > self.time_limit:
-            print("Game truncated. Reach time limit.")
+        if self.time >= self.time_limit:
+            #print("Game truncated. Reach time limit.")
             truncated = True
 
         observation = self._get_obs()

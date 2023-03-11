@@ -58,6 +58,7 @@ class Player_v0(object):
         self.acceleration = Vec2d.zero()
         self.action = None
         self.kicked_ball = False
+        self.fixed_on_border = False
 
         # useless player attributes
         self.name = name
@@ -203,9 +204,12 @@ class Player_v0(object):
         self.position = self.position + self.speed * deltaTime
         fix_x, fix_y = self.fix_position()
         if fix_x or fix_y:
+            self.fixed_on_border = True
             self.speed = Vec2d.zero()
             if old_fix_x or old_fix_y:
                 self.position = old_position
+        else:
+            self.fixed_on_border = False
 
 
 class Player_v1(Player_v0):
@@ -410,8 +414,11 @@ class Player_v2(Player_v1):
         self.position = self.position + self.speed * deltaTime
         fix_x, fix_y = self.fix_position()
         if fix_x or fix_y:
+            self.fixed_on_border = True
             self.speed = Vec2d.zero()
             if old_fix_x or old_fix_y:
                 self.position = old_position
+        else:
+            self.fixed_on_border = False
 
 
