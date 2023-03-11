@@ -17,6 +17,7 @@ sys.path.append(os.path.join(curr_path, "..", "football2d_gym"))
 
 import football2d
 from rl.algorithms.a2c import A2C
+from rl.algorithms.ppo import PPO
 from rl.envs import EnvPyTorchWrapper
 
 
@@ -60,14 +61,27 @@ actor_weights_path = os.path.join(args.load_dir, "actor_weights.pt")
 critic_weights_path = os.path.join(args.load_dir, "critic_weights.pt")
 
 model_args = json.load(open(hyperparams_path, "r"))
-agent = A2C(model_args["obs_shape"], 
-            model_args["action_shape"], 
-            model_args["hidden_size"], 
-            device, 
-            model_args["critic_lr"], 
-            model_args["actor_lr"],
-            model_args["init_sample_scale"],
-            n_envs=1)
+if model_args["algorithm"] == "a2c":
+    agent = A2C(model_args["obs_shape"], 
+                model_args["action_shape"], 
+                model_args["hidden_size"], 
+                device, 
+                model_args["critic_lr"], 
+                model_args["actor_lr"],
+                model_args["init_sample_scale"],
+                n_envs=1)
+elif model_args["algorithm"] == "ppo":
+    agent = PPO(model_args["obs_shape"], 
+                model_args["action_shape"], 
+                model_args["hidden_size"], 
+                device, 
+                model_args["batch_size"],
+                model_args["n_ppo_epochs"],
+                model_args["clip_param"],
+                model_args["critic_lr"], 
+                model_args["actor_lr"],
+                model_args["init_sample_scale"],
+                n_envs=1)
 
 if model_args["lunarlander"]:
     full_env_name = model_args["env_name"]
@@ -142,11 +156,11 @@ for episode in range(args.n_episodes):
         # update if the environment is done
         done = terminated or truncated
 
-    print("Episode {:3} reward: {:5.3f} | Episode length: {:5}".format(episode + 1, episode_reward, episode_length))
+    print("Episode {:3} reward: {:7.3f} | Episode length: {:5}".format(episode + 1, episode_reward, episode_length))
     episode_rewards.append(episode_reward)
     episode_lengths.append(episode_length)
 
-print("Average episode reward: {:5.3f} +- {:5.3f} | Average episode length: {:5.3f} +- {:5.3f}".format(
+print("Average episode reward: {:7.3f} +- {:7.3f} | Average episode length: {:7.3f} +- {:7.3f}".format(
         np.mean(episode_rewards), np.std(episode_rewards),
         np.mean(episode_lengths), np.std(episode_lengths))
      )

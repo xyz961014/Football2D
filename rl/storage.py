@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from collections import deque
 
 import ipdb
@@ -26,7 +27,7 @@ class TrainingMemory(object):
         self.step = 0
 
     def concat_states(self):
-        states = [torch.cat([v.unsqueeze(0) if v.dim() == 1 else v for v in states.values()]) 
+        states = [torch.cat([v.unsqueeze(0) if v.dim() == 1 else v for v in states.values()]).reshape(len(states), self.n_envs, -1).permute(1, 0, 2).reshape(self.n_envs, self.obs_shape) 
                   if states.__class__.__name__ in ["dict", "OrderedDict"] else states 
                   for states in list(self.states)[:-1]]
         states = torch.cat(states)
@@ -74,4 +75,38 @@ class TrainingMemory(object):
             self.returns[t] = gae + self.value_preds[t]
 
         return self.returns, self.advantages
+
+    def get_ppo_data_generator(self, batch_size, advantages=None):
+
+        sample_size = self.n_envs * self.n_steps_per_update
+        sampler = BatchSampler(SubsetRandomSampler(range(sample_size)), batch_size, drop_last=True)
+
+        def prepare_data_batch(data, inds):
+            data_batch = data.reshape(-1, *data.shape[2:])[inds]
+            return data_batch
+            #return data_batch.unsqueeze(-1) if data_batch.dim() == 1 else data_batch
+
+        # get states tensor
+        states = self.concat_states()
+
+        for indices in sampler:
+            states_batch = prepare_data_batch(states, indices)
+            actions_batch = prepare_data_batch(self.actions, indices)
+            value_preds_batch = prepare_data_batch(self.value_preds, indices)
+            returns_batch = prepare_data_batch(self.returns, indices)
+            masks_batch = prepare_data_batch(self.masks, indices)
+            old_action_log_probs_batch = prepare_data_batch(self.action_log_probs, indices)
+            if advantages is None:
+                advantages_batch = None
+            else:
+                advantages_batch = prepare_data_batch(advantages, indices)
+
+            yield (states_batch,
+                   actions_batch,
+                   value_preds_batch,
+                   returns_batch,
+                   masks_batch,
+                   old_action_log_probs_batch,
+                   advantages_batch)
+
 
