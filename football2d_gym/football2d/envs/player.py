@@ -57,6 +57,7 @@ class Player_v0(object):
         
         self.acceleration = Vec2d.zero()
         self.action = None
+        self.kicked_ball = False
 
         # useless player attributes
         self.name = name
@@ -113,6 +114,8 @@ class Player_v0(object):
             window.blit(surf, rect)
 
     def fix_position(self):
+        # Player's range of motion is larger than the pitch
+        margin = 50
         fix_x = False
         fix_y = False
         if -75 / 2 < self.position.y < 75 / 2:
@@ -120,9 +123,9 @@ class Player_v0(object):
             self.position = Vec2d(x, self.position.y)
             fix_x = self.position.x <= -1050 / 2 - 35 or self.position.x >= 1050 / 2 + 35
         elif -1050 / 2 < self.position.x < 1050 / 2:
-            y = min(max(self.position.y, -680 / 2), 680 / 2)
+            y = min(max(self.position.y, -680 / 2 - margin), 680 / 2 + margin)
             self.position = Vec2d(self.position.x, y)
-            fix_y = self.position.y <= -680 / 2 or self.position.y >= 680 / 2
+            fix_y = self.position.y <= -680 / 2 - margin or self.position.y >= 680 / 2 + margin
         else:
             if self.in_the_net():
                 y = self.position.y
@@ -134,11 +137,11 @@ class Player_v0(object):
                     fix_y = True
                 self.position = Vec2d(self.position.x, y)
             else:
-                x = min(max(self.position.x, -1050 / 2), 1050 / 2)
-                y = min(max(self.position.y, -680 / 2), 680 / 2)
+                x = min(max(self.position.x, -1050 / 2 - margin), 1050 / 2 + margin)
+                y = min(max(self.position.y, -680 / 2 - margin), 680 / 2 + margin)
                 self.position = Vec2d(x, y)
-                fix_x = self.position.x <= -1050 / 2 or self.position.x >= 1050 / 2
-                fix_y = self.position.y <= -680 / 2 or self.position.y >= 680 / 2
+                fix_x = self.position.x <= -1050 / 2 - margin or self.position.x >= 1050 / 2 + margin
+                fix_y = self.position.y <= -680 / 2 - margin or self.position.y >= 680 / 2 + margin
 
         return fix_x, fix_y
 
@@ -172,6 +175,9 @@ class Player_v0(object):
         # Kick the ball if in range
         if (self.position - ball.position).length < self.kick_range:
             ball.kicked(kick_momentum)
+            self.kicked_ball = True
+        else:
+            self.kicked_ball = False
 
     def in_the_net(self, position=None):
         if position is None:

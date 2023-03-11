@@ -91,7 +91,8 @@ class SelfTraining_v0(gym.Env):
     def _get_info(self):
         return {
                 "distance_to_ball": self.ball.distance_to(self.player.position),
-                "distance_to_goal": self.ball.distance_to_right_goal()
+                "distance_to_goal": self.ball.distance_to_right_goal(),
+                "kicked_ball": self.player.kicked_ball
                }
 
     def _get_obs_strs(self):
@@ -147,7 +148,7 @@ class SelfTraining_v0(gym.Env):
         if self.ball.goal: 
             #print("Game terminated. Goal.")
             terminated = True
-        if self.time > self.time_limit:
+        if self.time >= self.time_limit:
             #print("Game truncated. Reach time limit.")
             truncated = True
 

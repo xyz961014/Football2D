@@ -20,7 +20,7 @@ class AuxiliaryRewardManager_SelfTraining_v0(AuxiliaryRewardManager):
     def __call__(self, infos):
         if self.reward_type == "default":
             aux_rewards = -(infos["distance_to_ball"] + infos["distance_to_goal"]) * 1e-6
-            #aux_rewards = -(infos["distance_to_ball"]) * 1e-6
+            aux_rewards += infos["kicked_ball"] * 0.5
             return torch.from_numpy(aux_rewards).to(self.device)
         else:
             raise NotImplementedError

@@ -34,7 +34,7 @@ parser.add_argument("--env_name", type=str, default="default",
                     choices=["default",
                              "SelfTraining-v0", "SelfTraining-v1", "SelfTraining-v2"],
                     help="Football2d environment to choose")
-parser.add_argument("--time_limit", type=int, default=10,
+parser.add_argument("--time_limit", type=int, default=20,
                     help="time limit of football2d")
 # params
 parser.add_argument("--n_episodes", type=int, default=10,
@@ -65,6 +65,7 @@ if model_args["algorithm"] == "a2c":
     agent = A2C(model_args["obs_shape"], 
                 model_args["action_shape"], 
                 model_args["hidden_size"], 
+                model_args["output_activation"],
                 device, 
                 model_args["critic_lr"], 
                 model_args["actor_lr"],
@@ -74,6 +75,7 @@ elif model_args["algorithm"] == "ppo":
     agent = PPO(model_args["obs_shape"], 
                 model_args["action_shape"], 
                 model_args["hidden_size"], 
+                model_args["output_activation"],
                 device, 
                 model_args["batch_size"],
                 model_args["n_ppo_epochs"],

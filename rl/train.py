@@ -63,13 +63,17 @@ parser.add_argument("--n_steps_per_update", type=int, default=128,
                     help="number of steps per update, recommend small for a2c and big for ppo")
 parser.add_argument("--randomize_domain", action="store_true",
                     help="randomize env params")
-parser.add_argument("--time_limit", type=int, default=10,
+parser.add_argument("--time_limit", type=int, default=20,
                     help="time limit of football2d")
 # actor-critic model
 parser.add_argument("--hidden_size", type=int, default=128,
                     help="hidden size of actor and critic")
 parser.add_argument("--init_sample_scale", type=float, default=1.0,
                     help="initial scale for normal sampling")
+parser.add_argument("--normalize_factor", type=float, default=1e-3,
+                    help="normalize state vector to be appropriate")
+parser.add_argument("--output_activation", type=str, default="none",
+                    help="output activation function of the actor")
 # agent hyperparams
 parser.add_argument("--gamma", type=float, default=0.999,
                     help="discount factor for reward")
@@ -125,6 +129,7 @@ else:
 
 if args.lunarlander:
     args.env_name = "LunarLanderContinuous-v2"
+    args.normalize_factor = 1.0
     if args.randomize_domain:
         envs = gym.vector.AsyncVectorEnv(
             [
@@ -188,18 +193,21 @@ if args.algorithm == "a2c":
     agent = A2C(args.obs_shape, 
                 args.action_shape, 
                 args.hidden_size, 
+                args.output_activation,
                 device, 
                 args.critic_lr, 
                 args.actor_lr, 
                 args.init_sample_scale,
                 args.n_envs,
                 args.ent_coef,
-                args.max_grad_norm
+                args.max_grad_norm,
+                normalize_factor=args.normalize_factor
                 )
 elif args.algorithm == "ppo":
     agent = PPO(args.obs_shape, 
                 args.action_shape, 
                 args.hidden_size, 
+                args.output_activation,
                 device, 
                 args.batch_size,
                 args.n_ppo_epochs,
@@ -209,7 +217,8 @@ elif args.algorithm == "ppo":
                 args.init_sample_scale,
                 args.n_envs,
                 args.ent_coef,
-                args.max_grad_norm
+                args.max_grad_norm,
+                normalize_factor=args.normalize_factor
                 )
 else:
     raise KeyError("algorithm {} not implemented".format(args.algorithm))
