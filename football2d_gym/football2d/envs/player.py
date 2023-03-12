@@ -15,6 +15,7 @@ REBOUND_RANGE = 2
 MAX_SPEED = 100
 MAX_ACCELERATION = 100
 MAX_MOMENTUM = 150
+KICK_INTERVAL = 0.2
 RUNUP_FACTOR = 1
 RESISTANCE_FACTOR = 10
 
@@ -32,7 +33,7 @@ HEADING_DIRECTION_UNCERTAINTY = 0.1
 HEADING_POWER_UNCERTAINTY = 20
 HEADING_POWER_DIFFICULTY = 75
 
-deltaTime = 0.02
+timeDelta = 0.02
 
 class Player_v0(object):
     def __init__(self, position: Vec2d, speed: Vec2d=None, mass=PLAYER_MASS,
@@ -40,6 +41,7 @@ class Player_v0(object):
                        max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
                        max_momentum=MAX_MOMENTUM,
                        resistance_factor=RESISTANCE_FACTOR,
+                       kick_interval=KICK_INTERVAL,
                        name="Robben", number=10, 
                        color=PLAYER_RED, size=PLAYER_SIZE):
         super().__init__()
@@ -54,6 +56,9 @@ class Player_v0(object):
         self.max_acceleration = max_acceleration
         self.max_momentum = max_momentum
         self.resistance_factor = resistance_factor
+
+        self.kick_interval = kick_interval
+        self.kick_count_down = 0
         
         self.acceleration = Vec2d.zero()
         self.action = None
@@ -174,9 +179,12 @@ class Player_v0(object):
         kick_momentum += kick_momentum.normalized() * kick_momentum.normalized().dot(self.speed) * RUNUP_FACTOR 
 
         # Kick the ball if in range
-        if (self.position - ball.position).length < self.kick_range:
+        if self.kick_count_down > 0:
+            self.kick_count_down -= timeDelta
+        if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range:
             ball.kicked(kick_momentum)
             self.kicked_ball = True
+            self.kick_count_down = self.kick_interval
         else:
             self.kicked_ball = False
 
@@ -194,14 +202,14 @@ class Player_v0(object):
 
     def update(self):
         acceleration = self.get_acceleration()
-        self.speed = self.speed + acceleration * deltaTime
+        self.speed = self.speed + acceleration * timeDelta
         if self.speed.length > self.max_speed:
             self.speed = self.speed.normalized() * self.max_speed
 
         old_position = self.position
         old_fix_x, old_fix_y = self.fix_position()
 
-        self.position = self.position + self.speed * deltaTime
+        self.position = self.position + self.speed * timeDelta
         fix_x, fix_y = self.fix_position()
         if fix_x or fix_y:
             self.fixed_on_border = True
@@ -259,8 +267,14 @@ class Player_v1(Player_v0):
 
         kick_momentum += kick_momentum.normalized() * kick_momentum.normalized().dot(self.speed) * RUNUP_FACTOR 
         # Kick the ball if in range
-        if (self.position - ball.position).length < self.kick_range:
+        if self.kick_count_down > 0:
+            self.kick_count_down -= timeDelta
+        if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range:
             ball.kicked(kick_momentum)
+            self.kicked_ball = True
+            self.kick_count_down = self.kick_interval
+        else:
+            self.kicked_ball = False
 
 
 class Player_v2(Player_v1):
@@ -385,25 +399,31 @@ class Player_v2(Player_v1):
 
         kick_momentum += kick_momentum.normalized() * kick_momentum.normalized().dot(self.speed) * RUNUP_FACTOR 
         # Kick the ball if in range
-        if (self.position - ball.position).length < self.kick_range:
+        if self.kick_count_down > 0:
+            self.kick_count_down -= timeDelta
+        if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range:
             ball.kicked(kick_momentum)
+            self.kicked_ball = True
+            self.kick_count_down = self.kick_interval
+        else:
+            self.kicked_ball = False
 
 
     def update(self):
         # angular update
         angular_acceleration = self.get_angular_acceleration()
-        self.angular_speed = self.angular_speed + angular_acceleration * deltaTime
+        self.angular_speed = self.angular_speed + angular_acceleration * timeDelta
         if self.angular_speed > self.max_angular_speed:
             self.angular_speed = self.max_angular_speed
         if self.angular_speed < -self.max_angular_speed:
             self.angular_speed = -self.max_angular_speed
-        self.direction = self.direction.rotated(self.angular_speed * deltaTime)
+        self.direction = self.direction.rotated(self.angular_speed * timeDelta)
 
         # modify speed limit based on moving direction
         heading_factor_move = (1 - Vec2d.dot(self.direction.normalized(), self.speed.normalized())) / 2 # 0-1 value
 
         acceleration = self.get_acceleration()
-        self.speed = self.speed + acceleration * deltaTime
+        self.speed = self.speed + acceleration * timeDelta
         max_speed = self.max_speed - heading_factor_move * (self.max_speed - self.max_backward_speed)
         if self.speed.length > max_speed:
             self.speed = self.speed.normalized() * max_speed
@@ -411,7 +431,7 @@ class Player_v2(Player_v1):
         old_position = self.position
         old_fix_x, old_fix_y = self.fix_position()
 
-        self.position = self.position + self.speed * deltaTime
+        self.position = self.position + self.speed * timeDelta
         fix_x, fix_y = self.fix_position()
         if fix_x or fix_y:
             self.fixed_on_border = True

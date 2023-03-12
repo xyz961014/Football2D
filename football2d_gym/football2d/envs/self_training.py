@@ -170,6 +170,9 @@ class SelfTraining_v0(gym.Env):
 
         return observation, reward, terminated, truncated, info
 
+    def add_customized_reward(self, reward):
+        self.accumulated_reward += reward
+
     def render(self):
         if self.render_mode == "rgb_array":
             return self._render_frame()
@@ -400,10 +403,10 @@ class SelfTraining_v0(gym.Env):
                            name="goal")
 
         # print reward
-        self.draw_text("reward:{:7.2f}".format(self.accumulated_reward), 
+        self.draw_text("reward:{:8.3f}".format(self.accumulated_reward), 
                        REWARD_TEXT_SIZE, 
                        font_name="consolas",
-                       x=1040, y=25, color=BLACK,
+                       x=1030, y=25, color=BLACK,
                        name="reward")
 
         # print state

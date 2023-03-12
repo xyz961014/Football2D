@@ -23,7 +23,10 @@ class AuxiliaryRewardManager_SelfTraining_v0(AuxiliaryRewardManager):
             aux_rewards = -(infos["distance_to_ball"] + infos["distance_to_goal"]) * 1e-6
             # reward of ball being kicked
             aux_rewards += infos["kicked_ball"] * 0.5
-            return torch.from_numpy(aux_rewards).to(self.device)
+            if np.isscalar(aux_rewards):
+                return aux_rewards
+            else:
+                return torch.from_numpy(aux_rewards).to(self.device)
         else:
             raise NotImplementedError
 

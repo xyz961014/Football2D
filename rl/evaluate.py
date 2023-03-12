@@ -19,6 +19,7 @@ import football2d
 from rl.algorithms.a2c import A2C
 from rl.algorithms.ppo import PPO
 from rl.envs import EnvPyTorchWrapper
+from rl.rewards import get_auxiliary_reward_manager
 
 
 import ipdb
@@ -36,6 +37,8 @@ parser.add_argument("--env_name", type=str, default="default",
                     help="Football2d environment to choose")
 parser.add_argument("--time_limit", type=int, default=20,
                     help="time limit of football2d")
+parser.add_argument("--show_auxiliary_reward", action="store_true",
+                    help="show auxiliary reward")
 # params
 parser.add_argument("--n_episodes", type=int, default=10,
                     help="number of episodes")
@@ -102,6 +105,11 @@ agent.actor.load_state_dict(torch.load(actor_weights_path))
 agent.critic.load_state_dict(torch.load(critic_weights_path))
 agent.eval()
 
+if args.show_auxiliary_reward:
+    auxiliary_reward_manager = get_auxiliary_reward_manager(model_args["env_name"], 
+                                                            device, 
+                                                            model_args["auxiliary_reward_type"])
+
 
 episode_rewards = []
 episode_lengths = []
@@ -152,6 +160,10 @@ for episode in range(args.n_episodes):
 
         # perform the action A_{t} in the environment to get S_{t+1} and R_{t+1}
         state, reward, terminated, truncated, info = env.step(action.squeeze())
+        if args.show_auxiliary_reward:
+            auxiliary_reward = auxiliary_reward_manager(info)
+            reward += auxiliary_reward
+            env.add_customized_reward(auxiliary_reward)
         episode_reward += reward
         episode_length += 1
 
