@@ -23,17 +23,18 @@ class PPO(ActorCritic):
         hidden_size: int,
         output_activation: str,
         device: torch.device,
-        batch_size: int,
-        n_ppo_epochs: int,
-        clip_param: float,
-        critic_lr: float,
-        actor_lr: float,
-        init_scale: float,
-        n_envs: int,
+        batch_size: int=64,
+        n_ppo_epochs: int=4,
+        clip_param: float=0.1,
+        critic_lr: float=5e-3,
+        actor_lr: float=1e-3,
+        weight_decay: float=0.0,
+        init_scale: float=1.0,
+        n_envs=1,
         ent_coef=1.0,
         max_grad_norm=1.0,
         train_scale=True,
-        normalize_factor=1.0
+        normalize_factor=1.0,
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
         super().__init__(n_features, n_actions, hidden_size, output_activation,
@@ -50,8 +51,8 @@ class PPO(ActorCritic):
         self.actor_params = list(self.actor.parameters())
         if train_scale and hasattr(self.dist, "parameters"):
             self.actor_params.extend(list(self.dist.parameters()))
-        self.critic_optim = optim.Adam(self.critic_params, lr=critic_lr)
-        self.actor_optim = optim.Adam(self.actor_params, lr=actor_lr)
+        self.critic_optim = optim.Adam(self.critic_params, lr=critic_lr, weight_decay=weight_decay)
+        self.actor_optim = optim.Adam(self.actor_params, lr=actor_lr, weight_decay=weight_decay)
 
     def get_losses(self,
         states_batch,
@@ -73,7 +74,7 @@ class PPO(ActorCritic):
         ratio = torch.exp(action_log_probs - old_action_log_probs_batch)
         surr1 = ratio * advantages_batch
         surr2 = torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * advantages_batch
-        actor_loss = -torch.min(surr1, surr2).mean() - self.ent_coef * entropy
+        actor_loss = -torch.min(surr1, surr2).mean()
 
         return (critic_loss, actor_loss, entropy)
 
@@ -89,6 +90,7 @@ class PPO(ActorCritic):
             for sample in data_generator:
 
                 critic_loss, actor_loss, entropy = self.get_losses(*sample)
+                total_actor_loss = actor_loss - self.ent_coef * entropy
 
                 self.critic_optim.zero_grad()
                 critic_loss.backward()
@@ -96,7 +98,7 @@ class PPO(ActorCritic):
                 self.critic_optim.step()
 
                 self.actor_optim.zero_grad()
-                actor_loss.backward()
+                total_actor_loss.backward()
                 nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
                 self.actor_optim.step()
 

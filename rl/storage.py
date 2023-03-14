@@ -79,6 +79,7 @@ class TrainingMemory(object):
     def get_ppo_data_generator(self, batch_size, advantages=None):
 
         sample_size = self.n_envs * self.n_steps_per_update
+        assert batch_size <= sample_size
         sampler = BatchSampler(SubsetRandomSampler(range(sample_size)), batch_size, drop_last=True)
 
         def prepare_data_batch(data, inds):

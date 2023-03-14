@@ -28,26 +28,35 @@ REWARD_TEXT_SIZE = 20
 STATE_ACTION_TEXT_SIZE = 18
 
 timeDelta = 0.02
+FIX_PRECISION = 1e-3
 
 class SelfTraining_v0(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 50}
 
-    def __init__(self, render_mode=None, time_limit=120, randomize_position=False):
+    def __init__(self, render_mode=None, learn_to_kick=False, time_limit=120, randomize_position=False,
+                 ball_position=(0, 0), player_position=(-100, 0)):
         super().__init__()
         self.time_limit = time_limit
         self.window_width = 1200  # The size of the PyGame window
         self.window_height = 900  # The size of the PyGame window
         self.center_point = CENTER
 
+        self.ball_position = ball_position
+        self.player_position = player_position
+
         self.randomize_position = randomize_position
+        self.learn_to_kick = learn_to_kick
 
         # Position of ball and player are relative to the center point
         if self.randomize_position:
-            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
-            self.player = Player_v0(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
+            self.player = Player_v0(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
         else:
-            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0))
-            self.player = Player_v0(Vec2d(-100, 0))
+            self.ball = Ball(Vec2d(*self.ball_position), Vec2d.zero())
+            self.player = Player_v0(Vec2d(*self.player_position))
+        if self.learn_to_kick:
+            self.player.position = self.ball.position
+
         self.time = 0
         self.accumulated_reward = 0
 
@@ -98,8 +107,12 @@ class SelfTraining_v0(gym.Env):
 
     def _get_obs_strs(self):
         observation = self._get_obs()
+        if "ball_speed" in observation.keys():
+            observation["ball_speed_value"] = np.linalg.norm(observation["ball_speed"], keepdims=True)
+        if "player_speed" in observation.keys():
+            observation["player_speed_value"] = np.linalg.norm(observation["player_speed"], keepdims=True)
         obs_strs = {}
-        for name, value in observation.items():
+        for name, value in sorted(observation.items(), key=lambda x: x[0]):
             if type(value) is np.ndarray:
                 if value.size == 1:
                     obs_strs[name] = "{:20}: {:9.2f}           ".format(re.sub("_", " ", string.capwords(name)),
@@ -117,13 +130,19 @@ class SelfTraining_v0(gym.Env):
 
         # Position of ball and player are relative to the center point
         if self.randomize_position:
-            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)))
-            self.player = Player_v0(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
+            self.player = Player_v0(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
         else:
-            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0))
-            self.player = Player_v0(Vec2d(-100, 0))
-        self.time = 0
+            self.ball = Ball(Vec2d(*self.ball_position), Vec2d.zero())
+            self.player = Player_v0(Vec2d(*self.player_position))
+        if self.learn_to_kick:
+            self.player.position = self.ball.position
 
+        self.time = 0
+        self.accumulated_reward = 0
+
+        self.terminated = False
+        self.truncated = False
         observation = self._get_obs()
         info = self._get_info()
 
@@ -135,32 +154,30 @@ class SelfTraining_v0(gym.Env):
     def step(self, action):
 
         self.time += timeDelta
-        terminated = False
-        truncated = False
 
         self.player.act(action, self.ball)
         self.player.update()
         self.ball.update([self.player])
 
-        if self.ball.home_goal:
-            reward = 1
-        elif self.ball.away_goal:
-            reward = -1
-        else:
-            reward = 0
+        reward = 0
+        if not self.terminated and not self.truncated:
+            if self.ball.home_goal:
+                reward += 1
+            elif self.ball.away_goal:
+                reward += -1
 
-        # extra negative reward if the player stays on the border
-        if self.player.fixed_on_border:
-            reward -= 0.1
+            # extra negative reward if the player stays on the border
+            if self.player.fixed_on_border:
+                reward -= 0.1
 
         self.accumulated_reward += reward
 
         if self.ball.goal: 
             #print("Game terminated. Goal.")
-            terminated = True
-        if self.time >= self.time_limit:
+            self.terminated = True
+        if self.time >= self.time_limit - FIX_PRECISION:
             #print("Game truncated. Reach time limit.")
-            truncated = True
+            self.truncated = True
 
         observation = self._get_obs()
         info = self._get_info()
@@ -168,7 +185,7 @@ class SelfTraining_v0(gym.Env):
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation, reward, terminated, truncated, info
+        return observation, reward, self.terminated, self.truncated, info
 
     def add_customized_reward(self, reward):
         self.accumulated_reward += reward
@@ -403,7 +420,7 @@ class SelfTraining_v0(gym.Env):
                            name="goal")
 
         # print reward
-        self.draw_text("reward:{:8.3f}".format(self.accumulated_reward), 
+        self.draw_text("reward:{:8.4f}".format(self.accumulated_reward), 
                        REWARD_TEXT_SIZE, 
                        font_name="consolas",
                        x=1030, y=25, color=BLACK,
@@ -474,47 +491,48 @@ class SelfTraining_v0(gym.Env):
 class SelfTraining_v1(SelfTraining_v0):
     metadata = {"render_modes": ["human"], "render_fps": 50}
 
-    def __init__(self, render_mode=None, time_limit=120, randomize_position=False):
-        super().__init__(render_mode, time_limit, randomize_position)
+    def __init__(self, render_mode=None, learn_to_kick=False, time_limit=120, randomize_position=False,
+                 ball_position=(0, 0), player_position=(-100, 0)):
+        super().__init__(render_mode, learn_to_kick, time_limit, randomize_position, ball_position, player_position)
         if randomize_position:
-            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)), can_be_out=True)
-            self.player = Player_v1(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)), can_be_out=True)
+            self.player = Player_v1(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
         else:
             self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0), can_be_out=True)
             self.player = Player_v1(Vec2d(-100, 0))
+        if self.learn_to_kick:
+            self.ball.position = self.player.position
 
     def step(self, action):
 
         self.time += timeDelta
-        terminated = False
-        truncated = False
 
         self.player.act(action, self.ball)
         self.player.update()
         self.ball.update([self.player])
 
-        if self.ball.home_goal:
-            reward = 1
-        elif self.ball.away_goal:
-            reward = -1
-        else:
-            reward = 0
-        # extra negative reward if the player stays on the border
-        if self.player.fixed_on_border:
-            reward -= 0.1
+        reward = 0
+        if not self.terminated and not self.truncated:
+            if self.ball.home_goal:
+                reward += 1
+            elif self.ball.away_goal:
+                reward += -1
+
+            # extra negative reward if the player stays on the border
+            if self.player.fixed_on_border:
+                reward -= 0.1
 
         self.accumulated_reward += reward
 
         if self.ball.goal: 
-            if self.ball.speed.length == 0:
-                #print("Game terminated. Goal.")
-                terminated = True
+            #print("Game terminated. Goal.")
+            self.terminated = True
         elif self.ball.out:
             #print("Game terminated. Out.")
-            terminated = True
-        if self.time >= self.time_limit:
+            self.terminated = True
+        if self.time >= self.time_limit - FIX_PRECISION:
             #print("Game truncated. Reach time limit.")
-            truncated = True
+            self.truncated = True
 
         observation = self._get_obs()
         info = self._get_info()
@@ -522,20 +540,23 @@ class SelfTraining_v1(SelfTraining_v0):
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation, reward, terminated, truncated, info
+        return observation, reward, self.terminated, self.truncated, info
 
 
 class SelfTraining_v2(SelfTraining_v1):
     metadata = {"render_modes": ["human"], "render_fps": 50}
 
-    def __init__(self, render_mode=None, time_limit=120, randomize_position=False):
-        super().__init__(render_mode, time_limit, randomize_position)
+    def __init__(self, render_mode=None, learn_to_kick=False, time_limit=120, randomize_position=False,
+                 ball_position=(0, 0), player_position=(-100, 0)):
+        super().__init__(render_mode, learn_to_kick, time_limit, randomize_position, ball_position, player_position)
         if randomize_position:
-            self.ball = Ball(Vec2d(*np.random.randint(-300, 300, 2)), can_be_out=True)
-            self.player = Player_v2(Vec2d(*np.random.randint(-300, 300, 2)))
+            self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)), can_be_out=True)
+            self.player = Player_v2(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
         else:
             self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0), can_be_out=True)
             self.player = Player_v2(Vec2d(-100, 0))
+        if self.learn_to_kick:
+            self.ball.position = self.player.position
 
         self.observation_space = spaces.Dict(
             {

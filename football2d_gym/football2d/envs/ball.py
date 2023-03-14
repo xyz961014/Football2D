@@ -34,15 +34,16 @@ class Ball(object):
         self.bounce_factor = bounce_factor
         self.goal_bounce_factor = goal_bounce_factor
 
+        # useless ball attributes
+        self.color = color
+        self.size = size
+
         self.acceleration = self.get_acceleration()
         self.curr_bounce_factor = bounce_factor # change due to different situations
         self.home_goal, self.away_goal = self.in_the_net()
         self.out = False
         self.rebound_from_player = False
 
-        # useless ball attributes
-        self.color = color
-        self.size = size
 
     @property
     def goal(self):
@@ -58,8 +59,11 @@ class Ball(object):
         return self.position.get_distance(other)
 
     def distance_to_right_goal(self):
-        distance = min(self.position.get_distance(Vec2d(1050 / 2, 75 / 2)), 
-                       self.position.get_distance(Vec2d(1050 / 2, -75 / 2)))
+        if -75 / 2 <= self.position.y <= 75 / 2:
+            distance = np.abs(1050 / 2 - self.position.x)
+        else:
+            distance = min(self.position.get_distance(Vec2d(1050 / 2, 75 / 2)), 
+                           self.position.get_distance(Vec2d(1050 / 2, -75 / 2)))
         in_the_net, _ = self.in_the_net()
         if in_the_net:
             return 0
@@ -67,8 +71,11 @@ class Ball(object):
             return distance
 
     def distance_to_left_goal(self):
-        distance = min(self.position.get_distance(Vec2d(-1050 / 2, 75 / 2)), 
-                       self.position.get_distance(Vec2d(-1050 / 2, -75 / 2)))
+        if -75 / 2 <= self.position.y <= 75 / 2:
+            distance = np.abs(-1050 / 2 - self.position.x)
+        else:
+            distance = min(self.position.get_distance(Vec2d(-1050 / 2, 75 / 2)), 
+                           self.position.get_distance(Vec2d(-1050 / 2, -75 / 2)))
         _, in_the_net = self.in_the_net()
         if in_the_net:
             return 0
@@ -149,9 +156,9 @@ class Ball(object):
             position = self.position
         home_goal = False # ball in the right net
         away_goal = False # ball in the left net
-        if 1050 / 2 < position.x < 1050 / 2 + 35 and -75 / 2 < position.y < 75 / 2:
+        if 1050 / 2 + self.size / 2 < position.x < 1050 / 2 + 35 and -75 / 2 < position.y < 75 / 2:
             home_goal = True
-        if -1050 / 2 - 35 < position.x < -1050 / 2 and -75 / 2 < position.y < 75 / 2:
+        if -1050 / 2 - 35 < position.x < -1050 / 2 - self.size / 2 and -75 / 2 < position.y < 75 / 2:
             away_goal = True
 
         return home_goal, away_goal

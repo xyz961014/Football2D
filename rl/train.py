@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from pprint import pprint
@@ -60,12 +61,18 @@ def parse_args():
                         help="number of envs")
     parser.add_argument("--n_updates", type=int, default=500,
                         help="number of updates")
-    parser.add_argument("--n_steps_per_update", type=int, default=128,
+    parser.add_argument("--n_steps_per_update", type=int, default=1024,
                         help="number of steps per update, recommend small for a2c and big for ppo")
     parser.add_argument("--randomize_domain", action="store_true",
                         help="randomize env params")
+    parser.add_argument("--learn_to_kick", action="store_true",
+                        help="player and ball start at the same place")
     parser.add_argument("--time_limit", type=int, default=20,
                         help="time limit of football2d")
+    parser.add_argument("--ball_position", type=int, default=[0, 0], nargs="+",
+                        help="ball position of football2d")
+    parser.add_argument("--player_position", type=int, default=[-100, 0], nargs="+",
+                        help="player position of football2d")
     # actor-critic model
     parser.add_argument("--hidden_size", type=int, default=128,
                         help="hidden size of actor and critic")
@@ -73,7 +80,7 @@ def parse_args():
                         help="initial scale for normal sampling")
     parser.add_argument("--normalize_factor", type=float, default=1e-3,
                         help="normalize state vector to be appropriate")
-    parser.add_argument("--output_activation", type=str, default="none",
+    parser.add_argument("--output_activation", type=str, default="tanh",
                         help="output activation function of the actor")
     # agent hyperparams
     parser.add_argument("--gamma", type=float, default=0.999,
@@ -86,14 +93,19 @@ def parse_args():
                         help="actor learning rate")
     parser.add_argument("--critic_lr", type=float, default=5e-3,
                         help="critic learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0,
+                        help="L2 normalization")
     parser.add_argument("--max_grad_norm", type=float, default=0.5,
                         help="clip gradient, max norm of gradient")
+    parser.add_argument("--lr_scheduler", type=str, default="none",
+                        choices=["none", "linear", "cosineannealing"],
+                        help="Scheduler to change learning rate")
     # ppo
     parser.add_argument("--batch_size", type=int, default=64,
                         help="batch size in ppo")
-    parser.add_argument("--n_ppo_epochs", type=int, default=5,
+    parser.add_argument("--n_ppo_epochs", type=int, default=4,
                         help="number of epochs to train in ppo")
-    parser.add_argument("--clip_param", type=float, default=0.2,
+    parser.add_argument("--clip_param", type=float, default=0.1,
                         help="ppo clip parameter")
     # training setting
     parser.add_argument("--use_cuda", action="store_true",
@@ -107,8 +119,13 @@ def parse_args():
     # save model
     parser.add_argument("--name", type=str, default="default",
                         help="model name to save")
-    parser.add_argument("--save_interval", type=int, default=20,
+    parser.add_argument("--save_interval", type=int, default=10,
                         help="interval steps for saving models")
+    # load model
+    parser.add_argument("--load_model", action="store_true",
+                        help="load model and continue training")
+    parser.add_argument("--load_dir", type=str, default="saved_models/SelfTraining-v0/ppo/default",
+                        help="directory to load model")
     
     args = parser.parse_args()
     return args
@@ -122,13 +139,13 @@ def main(args):
     
     # set the environment
     full_env_name = "football2d/{}".format(args.env_name)
-    if args.randomize_domain:
-        envs = gym.vector.make(full_env_name, num_envs=args.n_envs, randomize_position=True,
-                               time_limit=args.time_limit)
-    else:
-        envs = gym.vector.make(full_env_name, num_envs=args.n_envs, randomize_position=False, 
-                               #render_mode="human",
-                               time_limit=args.time_limit)
+    envs = gym.vector.make(full_env_name, num_envs=args.n_envs, 
+                           randomize_position=args.randomize_domain,
+                           #render_mode="human",
+                           learn_to_kick=args.learn_to_kick,
+                           time_limit=args.time_limit,
+                           ball_position=args.ball_position,
+                           player_position=args.player_position)
     
     if args.lunarlander:
         args.env_name = "LunarLanderContinuous-v2"
@@ -200,6 +217,7 @@ def main(args):
                     device, 
                     args.critic_lr, 
                     args.actor_lr, 
+                    args.weight_decay,
                     args.init_sample_scale,
                     args.n_envs,
                     args.ent_coef,
@@ -217,6 +235,7 @@ def main(args):
                     args.clip_param,
                     args.critic_lr, 
                     args.actor_lr, 
+                    args.weight_decay,
                     args.init_sample_scale,
                     args.n_envs,
                     args.ent_coef,
@@ -225,7 +244,34 @@ def main(args):
                     )
     else:
         raise KeyError("algorithm {} not implemented".format(args.algorithm))
+
+    if args.lr_scheduler == "none":
+        lr_scheduler_actor = None
+        lr_scheduler_critic = None
+    elif args.lr_scheduler == "linear":
+        lr_scheduler_actor = LinearLR(agent.actor_optim, start_factor=1.0, end_factor=0.0, 
+                                      total_iters=args.n_updates)
+        lr_scheduler_critic = LinearLR(agent.critic_optim, start_factor=1.0, end_factor=0.0, 
+                                       total_iters=args.n_updates)
+    elif args.lr_scheduler == "cosineannealing":
+        lr_scheduler_actor = CosineAnnealingLR(agent.actor_optim, T_max=args.n_updates)
+        lr_scheduler_critic = CosineAnnealingLR(agent.critic_optim, T_max=args.n_updates)
+    else:
+        raise KeyError("Unknown type of Scheduler: {}".format(args.lr_scheduler))
+
+
+    if args.load_model:
+        """ load network weights """
+        hyperparams_path = os.path.join(args.load_dir, "hyperparams.json")
+        actor_weights_path = os.path.join(args.load_dir, "actor_weights.pt")
+        critic_weights_path = os.path.join(args.load_dir, "critic_weights.pt")
     
+        model_args = json.load(open(hyperparams_path, "r"))
+        assert args.algorithm == model_args["algorithm"]
+        agent.actor.load_state_dict(torch.load(actor_weights_path))
+        agent.critic.load_state_dict(torch.load(critic_weights_path))
+
+
     
     if args.use_auxiliary_reward:
         auxiliary_reward_manager = get_auxiliary_reward_manager(args.env_name, device, args.auxiliary_reward_type)
@@ -294,10 +340,13 @@ def main(args):
     
         # update the actor and critic networks
         critic_loss, actor_loss, entropy = agent.update_parameters(memory)
-    
+
         # clear memory
         memory.after_update()
     
+        ##############################################
+        # Start of Tensorboard logging
+        ##############################################
         # log the losses and entropy
         if len(episode_lengths) > 0:
             writer.add_scalar("training/episode_length", np.mean(episode_lengths), update_step)
@@ -329,7 +378,28 @@ def main(args):
                 info_value = [info[info_key] for info in episode_final_infos]
                 info_value_mean = np.mean(info_value)
                 writer.add_scalar("{}_final_info/{}".format(args.env_name, info_key), info_value_mean, update_step)
+
+        # lr
+        writer.add_scalar("optimizer/actor_lr", agent.actor_optim.param_groups[0]["lr"], update_step)
+        writer.add_scalar("optimizer/critic_lr", agent.critic_optim.param_groups[0]["lr"], update_step)
+
+        # weights
+        for weight_key, weight_tensor in agent.actor.named_parameters():
+            writer.add_histogram("actor_weights/{}".format(weight_key), weight_tensor, update_step)
+        for weight_key, weight_tensor in agent.critic.named_parameters():
+            writer.add_histogram("critic_weights/{}".format(weight_key), weight_tensor, update_step)
     
+        ##############################################
+        # End of Tensorboard logging
+        ##############################################
+
+        # adjust lr
+        if lr_scheduler_actor is not None:
+            lr_scheduler_actor.step()
+        if lr_scheduler_critic is not None:
+            lr_scheduler_critic.step()
+
+        # save model
         if update_step > 0 and update_step % args.save_interval == 0:
             ckp_dir_name = "ckp_{}".format(update_step)
             ckp_dir = os.path.join(save_dir, ckp_dir_name)

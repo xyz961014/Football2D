@@ -36,10 +36,11 @@ class A2C(ActorCritic):
         hidden_size: int,
         output_activation: str,
         device: torch.device,
-        critic_lr: float,
-        actor_lr: float,
-        init_scale: float,
-        n_envs: int,
+        critic_lr: float=5e-3,
+        actor_lr: float=1e-3,
+        weight_decay: float=0.0,
+        init_scale: float=1.0,
+        n_envs=1,
         ent_coef=1.0,
         max_grad_norm=1.0,
         train_scale=True,
@@ -56,8 +57,8 @@ class A2C(ActorCritic):
         self.actor_params = list(self.actor.parameters())
         if train_scale and hasattr(self.dist, "parameters"):
             self.actor_params.extend(list(self.dist.parameters()))
-        self.critic_optim = optim.RMSprop(self.critic_params, lr=critic_lr)
-        self.actor_optim = optim.RMSprop(self.actor_params, lr=actor_lr)
+        self.critic_optim = optim.RMSprop(self.critic_params, lr=critic_lr, weight_decay=weight_decay)
+        self.actor_optim = optim.RMSprop(self.actor_params, lr=actor_lr, weight_decay=weight_decay)
 
     def get_losses(
         self,
