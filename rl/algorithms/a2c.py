@@ -44,11 +44,12 @@ class A2C(ActorCritic):
         ent_coef=1.0,
         max_grad_norm=1.0,
         train_scale=True,
-        normalize_factor=1.0
+        normalize_factor=1.0,
+        dropout=0.0
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
         super().__init__(n_features, n_actions, hidden_size, output_activation,
-                         device, init_scale, n_envs, normalize_factor)
+                         device, init_scale, n_envs, normalize_factor, dropout)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
 

@@ -80,6 +80,8 @@ def parse_args():
                         help="initial scale for normal sampling")
     parser.add_argument("--normalize_factor", type=float, default=1e-3,
                         help="normalize state vector to be appropriate")
+    parser.add_argument("--dropout", type=float, default=0.0,
+                        help="dropout p for actor and critic training")
     parser.add_argument("--output_activation", type=str, default="tanh",
                         help="output activation function of the actor")
     # agent hyperparams
@@ -93,6 +95,8 @@ def parse_args():
                         help="actor learning rate")
     parser.add_argument("--critic_lr", type=float, default=5e-3,
                         help="critic learning rate")
+    parser.add_argument("--entropy_lr", type=float, default=1e-3,
+                        help="entropy learning rate, only implemented for ppo")
     parser.add_argument("--weight_decay", type=float, default=0,
                         help="L2 normalization")
     parser.add_argument("--max_grad_norm", type=float, default=0.5,
@@ -192,10 +196,12 @@ def main(args):
         hyperparams_path = os.path.join(dir_name, "hyperparams.json")
         actor_weights_path = os.path.join(dir_name, "actor_weights.pt")
         critic_weights_path = os.path.join(dir_name, "critic_weights.pt")
+        dist_weights_path = os.path.join(dir_name, "training_dist_weights.pt")
         
         json.dump(args.__dict__, open(hyperparams_path, "w"), indent=4)
         torch.save(agent.actor.state_dict(), actor_weights_path)
         torch.save(agent.critic.state_dict(), critic_weights_path)
+        torch.save(agent.dist.state_dict(), dist_weights_path)
         print("Successfully save model in {}".format(dir_name))
     
     # init SummaryWriter
@@ -235,6 +241,7 @@ def main(args):
                     args.clip_param,
                     args.critic_lr, 
                     args.actor_lr, 
+                    args.entropy_lr, 
                     args.weight_decay,
                     args.init_sample_scale,
                     args.n_envs,
@@ -248,14 +255,18 @@ def main(args):
     if args.lr_scheduler == "none":
         lr_scheduler_actor = None
         lr_scheduler_critic = None
+        lr_scheduler_entropy = None
     elif args.lr_scheduler == "linear":
         lr_scheduler_actor = LinearLR(agent.actor_optim, start_factor=1.0, end_factor=0.0, 
                                       total_iters=args.n_updates)
         lr_scheduler_critic = LinearLR(agent.critic_optim, start_factor=1.0, end_factor=0.0, 
                                        total_iters=args.n_updates)
+        lr_scheduler_entropy = LinearLR(agent.entropy_optim, start_factor=1.0, end_factor=0.0, 
+                                        total_iters=args.n_updates)
     elif args.lr_scheduler == "cosineannealing":
         lr_scheduler_actor = CosineAnnealingLR(agent.actor_optim, T_max=args.n_updates)
         lr_scheduler_critic = CosineAnnealingLR(agent.critic_optim, T_max=args.n_updates)
+        lr_scheduler_entropy = CosineAnnealingLR(agent.entropy_optim, T_max=args.n_updates)
     else:
         raise KeyError("Unknown type of Scheduler: {}".format(args.lr_scheduler))
 
@@ -265,11 +276,14 @@ def main(args):
         hyperparams_path = os.path.join(args.load_dir, "hyperparams.json")
         actor_weights_path = os.path.join(args.load_dir, "actor_weights.pt")
         critic_weights_path = os.path.join(args.load_dir, "critic_weights.pt")
+        dist_weights_path = os.path.join(args.load_dir, "training_dist_weights.pt")
     
         model_args = json.load(open(hyperparams_path, "r"))
         assert args.algorithm == model_args["algorithm"]
         agent.actor.load_state_dict(torch.load(actor_weights_path))
         agent.critic.load_state_dict(torch.load(critic_weights_path))
+        if os.path.exists(dist_weights_path):
+            agent.dist.load_state_dict(torch.load(dist_weights_path))
 
 
     
@@ -356,7 +370,9 @@ def main(args):
         writer.add_scalar("training/actor_loss", actor_loss, update_step)
         writer.add_scalar("training/critic_loss", critic_loss, update_step)
         # observation
-        writer.add_scalar("observation/normal_std", agent.dist.logstd.exp().mean() * agent.dist.init_scale, update_step)
+        for i, logstd in enumerate(agent.dist.logstd):
+            writer.add_scalar("observation/normal_std/{}".format(i), logstd.exp() * agent.dist.init_scale, 
+                              update_step)
         # final observation
         if len(episode_final_observations) > 0:
             if episode_final_observations[0].__class__.__name__ in ["dict"]:
@@ -382,6 +398,7 @@ def main(args):
         # lr
         writer.add_scalar("optimizer/actor_lr", agent.actor_optim.param_groups[0]["lr"], update_step)
         writer.add_scalar("optimizer/critic_lr", agent.critic_optim.param_groups[0]["lr"], update_step)
+        writer.add_scalar("optimizer/entropy_lr", agent.entropy_optim.param_groups[0]["lr"], update_step)
 
         # weights
         for weight_key, weight_tensor in agent.actor.named_parameters():
@@ -398,6 +415,8 @@ def main(args):
             lr_scheduler_actor.step()
         if lr_scheduler_critic is not None:
             lr_scheduler_critic.step()
+        if lr_scheduler_entropy is not None:
+            lr_scheduler_entropy.step()
 
         # save model
         if update_step > 0 and update_step % args.save_interval == 0:
@@ -411,7 +430,7 @@ def main(args):
     
     
     save_model(save_dir)
-    
+  
     # end training
     envs.close()
     writer.close()

@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import gym
@@ -45,6 +46,8 @@ parser.add_argument("--ball_position", type=int, default=[0, 0], nargs="+",
                     help="ball position of football2d")
 parser.add_argument("--player_position", type=int, default=[-100, 0], nargs="+",
                     help="player position of football2d")
+parser.add_argument("--standard_test", action="store_true",
+                    help="standard consistent test")
 # params
 parser.add_argument("--n_episodes", type=int, default=10,
                     help="number of episodes")
@@ -102,11 +105,24 @@ agent.actor.load_state_dict(torch.load(actor_weights_path))
 agent.critic.load_state_dict(torch.load(critic_weights_path))
 agent.eval()
 
+if args.standard_test:
+    xs = np.linspace(520, -520, 11)
+    ys = np.linspace(340, -340, 11)
+    xx, yy = np.meshgrid(xs, ys)
+    standard_positions = np.concatenate((xx, yy)).reshape(2, 11 * 11).transpose()
+
+    args.randomize_domain = False
+    args.show_auxiliary_reward = False
+    args.n_episodes = 11 * 11
+
+    # init SummaryWriter
+    writer_path = os.path.join("logs", "eval", full_env_name, model_args["algorithm"], model_args["name"])
+    writer = SummaryWriter(writer_path)
+
 if args.show_auxiliary_reward:
     auxiliary_reward_manager = get_auxiliary_reward_manager(model_args["env_name"], 
                                                             device, 
                                                             model_args["auxiliary_reward_type"])
-
 
 episode_rewards = []
 episode_lengths = []
@@ -114,13 +130,18 @@ for episode in range(args.n_episodes):
 
     # create a new sample environment to get new random parameters
     if not model_args["lunarlander"]:
+        ball_position = args.ball_position
+        player_position = args.player_position
+        if args.standard_test:
+            ball_position = standard_positions[episode % len(standard_positions)].tolist()
+            player_position = standard_positions[(episode + 1) % len(standard_positions)].tolist()
         env = gym.make(full_env_name, 
                        render_mode=render_mode, 
                        learn_to_kick=args.learn_to_kick,
                        randomize_position=args.randomize_domain, 
                        time_limit=args.time_limit,
-                       ball_position=args.ball_position,
-                       player_position=args.player_position)
+                       ball_position=ball_position,
+                       player_position=player_position)
     else:
         if args.randomize_domain:
             env = gym.make(
@@ -176,6 +197,23 @@ print("Average episode reward: {:8.4f} +- {:8.4f} | Average episode length: {:8.
         np.mean(episode_rewards), np.std(episode_rewards),
         np.mean(episode_lengths), np.std(episode_lengths))
      )
+
+if args.standard_test:
+    # save hparams
+    hparams = args.__dict__
+    hparams.update(model_args)
+    for key in hparams.keys():
+        if not type(hparams[key]) in [int, str, bool, float, torch.Tensor]:
+            try:
+                hparams[key] = torch.Tensor(hparams[key])
+            except:
+                hparams[key] = json.dumps(hparams[key])
+    metrics = {
+                  "episode_reward": np.mean(episode_rewards), 
+                  "episode_length": np.mean(episode_lengths)
+              }
+    writer.add_hparams(hparams, metrics, run_name=".")
+  
 
 env.close()
 

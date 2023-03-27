@@ -28,17 +28,18 @@ class PPO(ActorCritic):
         clip_param: float=0.1,
         critic_lr: float=5e-3,
         actor_lr: float=1e-3,
+        entropy_lr: float=1e-3,
         weight_decay: float=0.0,
         init_scale: float=1.0,
         n_envs=1,
         ent_coef=1.0,
         max_grad_norm=1.0,
-        train_scale=True,
         normalize_factor=1.0,
+        dropout=0.0,
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
         super().__init__(n_features, n_actions, hidden_size, output_activation,
-                         device, init_scale, n_envs, normalize_factor)
+                         device, init_scale, n_envs, normalize_factor, dropout)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
 
@@ -49,10 +50,11 @@ class PPO(ActorCritic):
         # define optimizers for actor and critic
         self.critic_params = list(self.critic.parameters())
         self.actor_params = list(self.actor.parameters())
-        if train_scale and hasattr(self.dist, "parameters"):
-            self.actor_params.extend(list(self.dist.parameters()))
+        self.entropy_params = list(self.dist.parameters())
+
         self.critic_optim = optim.Adam(self.critic_params, lr=critic_lr, weight_decay=weight_decay)
         self.actor_optim = optim.Adam(self.actor_params, lr=actor_lr, weight_decay=weight_decay)
+        self.entropy_optim = optim.Adam(self.entropy_params, lr=entropy_lr, weight_decay=weight_decay)
 
     def get_losses(self,
         states_batch,
@@ -98,9 +100,12 @@ class PPO(ActorCritic):
                 self.critic_optim.step()
 
                 self.actor_optim.zero_grad()
+                self.entropy_optim.zero_grad()
                 total_actor_loss.backward()
                 nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
+                nn.utils.clip_grad_norm_(self.entropy_params, self.max_grad_norm)
                 self.actor_optim.step()
+                self.entropy_optim.step()
 
                 critic_losses.append(critic_loss.item())
                 actor_losses.append(actor_loss.item())

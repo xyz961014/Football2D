@@ -168,7 +168,7 @@ class SelfTraining_v0(gym.Env):
 
             # extra negative reward if the player stays on the border
             if self.player.fixed_on_border:
-                reward -= 0.1
+                reward += -0.1
 
         self.accumulated_reward += reward
 
@@ -513,14 +513,17 @@ class SelfTraining_v1(SelfTraining_v0):
 
         reward = 0
         if not self.terminated and not self.truncated:
-            if self.ball.home_goal:
-                reward += 1
-            elif self.ball.away_goal:
-                reward += -1
+            if self.ball.goal:
+                if self.ball.home_goal:
+                    reward += 1
+                elif self.ball.away_goal:
+                    reward += -1
+            elif self.ball.out:
+                reward += -0.1
 
             # extra negative reward if the player stays on the border
             if self.player.fixed_on_border:
-                reward -= 0.1
+                reward += -0.1
 
         self.accumulated_reward += reward
 
