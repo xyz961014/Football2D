@@ -18,6 +18,7 @@ from rl.algorithms.actor_critic import ActorCritic
 class PPO(ActorCritic):
     def __init__(
         self,
+        model_name: str,
         n_features: int,
         n_actions: int,
         hidden_size: int,
@@ -38,7 +39,7 @@ class PPO(ActorCritic):
         dropout=0.0,
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
-        super().__init__(n_features, n_actions, hidden_size, output_activation,
+        super().__init__(model_name, n_features, n_actions, hidden_size, output_activation,
                          device, init_scale, n_envs, normalize_factor, dropout)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
@@ -92,18 +93,19 @@ class PPO(ActorCritic):
             for sample in data_generator:
 
                 critic_loss, actor_loss, entropy = self.get_losses(*sample)
-                total_actor_loss = actor_loss - self.ent_coef * entropy
+                total_loss = critic_loss + actor_loss - self.ent_coef * entropy
 
                 self.critic_optim.zero_grad()
-                critic_loss.backward()
-                nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
-                self.critic_optim.step()
-
                 self.actor_optim.zero_grad()
                 self.entropy_optim.zero_grad()
-                total_actor_loss.backward()
+
+                total_loss.backward()
+
+                nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.entropy_params, self.max_grad_norm)
+
+                self.critic_optim.step()
                 self.actor_optim.step()
                 self.entropy_optim.step()
 

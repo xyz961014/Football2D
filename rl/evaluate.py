@@ -58,6 +58,8 @@ parser.add_argument("--silent", action="store_true",
 parser.add_argument("--seed", type=int, default=42,
                     help="random seed")
 # load model
+parser.add_argument("--model_name", type=str, default="basic",
+                    help="actor critic model type, only used for compatibility")
 parser.add_argument("--load_dir", type=str, default="saved_models/LunarLanderContinuous-v2/a2c/default",
                     help="directory to load model")
 
@@ -73,15 +75,18 @@ actor_weights_path = os.path.join(args.load_dir, "actor_weights.pt")
 critic_weights_path = os.path.join(args.load_dir, "critic_weights.pt")
 
 model_args = json.load(open(hyperparams_path, "r"))
+model_name = model_args["model_name"] if "model_name" in model_args.keys() else args.model_name
 if model_args["algorithm"] == "a2c":
-    agent = A2C(model_args["obs_shape"], 
+    agent = A2C(model_name,
+                model_args["obs_shape"], 
                 model_args["action_shape"], 
                 model_args["hidden_size"], 
                 model_args["output_activation"],
                 device, 
                 normalize_factor=model_args["normalize_factor"])
 elif model_args["algorithm"] == "ppo":
-    agent = PPO(model_args["obs_shape"], 
+    agent = PPO(model_name,
+                model_args["obs_shape"], 
                 model_args["action_shape"], 
                 model_args["hidden_size"], 
                 model_args["output_activation"],

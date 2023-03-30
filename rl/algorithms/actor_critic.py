@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(parent_dir))
 from rl.utils import ScaleParameterizedNormal
 
 class ActorCritic(nn.Module):
-    def __init__(self, n_features, n_actions, hidden_size, output_activation, 
+    def __init__(self, model_name, n_features, n_actions, hidden_size, output_activation, 
                        device, init_scale, n_envs, normalize_factor=1.0, dropout=0.0):
         super().__init__()
         self.device = device
@@ -26,25 +26,47 @@ class ActorCritic(nn.Module):
 
         self.dist = ScaleParameterizedNormal(n_actions=n_actions, init_scale=init_scale).to(self.device)
 
-        critic_layers = [
-            nn.Linear(n_features, hidden_size),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(hidden_size, 1),  # estimate V(s)
-        ]
+        if model_name == "basic":
+            critic_layers = [
+                nn.Linear(n_features, hidden_size),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(hidden_size, hidden_size),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(hidden_size, 1),  # estimate V(s)
+            ]
 
-        actor_layers = [
-            nn.Linear(n_features, hidden_size),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(hidden_size, n_actions),  
-        ]
+            actor_layers = [
+                nn.Linear(n_features, hidden_size),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(hidden_size, hidden_size),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(hidden_size, n_actions),  
+            ]
+        elif model_name == "basic_wo_dropout":
+            critic_layers = [
+                nn.Linear(n_features, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, 1),  # estimate V(s)
+            ]
+
+            actor_layers = [
+                nn.Linear(n_features, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, n_actions),  
+            ]
+        elif model_name == "world":
+            pass
+        else:
+            raise KeyError("Unknown model type")
+
         if output_activation == "none":
             pass
         elif output_activation == "tanh":

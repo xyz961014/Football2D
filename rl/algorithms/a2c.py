@@ -31,6 +31,7 @@ class A2C(ActorCritic):
 
     def __init__(
         self,
+        model_name: str,
         n_features: int,
         n_actions: int,
         hidden_size: int,
@@ -48,7 +49,7 @@ class A2C(ActorCritic):
         dropout=0.0
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
-        super().__init__(n_features, n_actions, hidden_size, output_activation,
+        super().__init__(model_name, n_features, n_actions, hidden_size, output_activation,
                          device, init_scale, n_envs, normalize_factor, dropout)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm

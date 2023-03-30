@@ -74,6 +74,9 @@ def parse_args():
     parser.add_argument("--player_position", type=int, default=[-100, 0], nargs="+",
                         help="player position of football2d")
     # actor-critic model
+    parser.add_argument("--model_name", type=str, default="basic",
+                        choices=["basic", "basic_wo_dropout", "world"],
+                        help="model type to choose for actor critic")
     parser.add_argument("--hidden_size", type=int, default=128,
                         help="hidden size of actor and critic")
     parser.add_argument("--init_sample_scale", type=float, default=1.0,
@@ -216,7 +219,8 @@ def main(args):
     
     # init the agent
     if args.algorithm == "a2c":
-        agent = A2C(args.obs_shape, 
+        agent = A2C(args.model_name,
+                    args.obs_shape, 
                     args.action_shape, 
                     args.hidden_size, 
                     args.output_activation,
@@ -231,7 +235,8 @@ def main(args):
                     normalize_factor=args.normalize_factor
                     )
     elif args.algorithm == "ppo":
-        agent = PPO(args.obs_shape, 
+        agent = PPO(args.model_name,
+                    args.obs_shape, 
                     args.action_shape, 
                     args.hidden_size, 
                     args.output_activation,
