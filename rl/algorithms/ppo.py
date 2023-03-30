@@ -19,14 +19,15 @@ class PPO(ActorCritic):
     def __init__(
         self,
         model_name: str,
-        n_features: int,
-        n_actions: int,
+        feature_shape: int,
+        action_shape: int,
         hidden_size: int,
         output_activation: str,
         device: torch.device,
         batch_size: int=64,
         n_ppo_epochs: int=4,
         clip_param: float=0.1,
+        world_lr: float=1e-3,
         critic_lr: float=5e-3,
         actor_lr: float=1e-3,
         entropy_lr: float=1e-3,
@@ -39,7 +40,7 @@ class PPO(ActorCritic):
         dropout=0.0,
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
-        super().__init__(model_name, n_features, n_actions, hidden_size, output_activation,
+        super().__init__(model_name, feature_shape, action_shape, hidden_size, output_activation,
                          device, init_scale, n_envs, normalize_factor, dropout)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
@@ -49,10 +50,14 @@ class PPO(ActorCritic):
         self.clip_param = clip_param
 
         # define optimizers for actor and critic
+        if self.model_name in ["world"]:
+            self.world_params = list(self.world_encoder.parameters())
         self.critic_params = list(self.critic.parameters())
         self.actor_params = list(self.actor.parameters())
         self.entropy_params = list(self.dist.parameters())
 
+        if self.model_name in ["world"]:
+            self.world_optim = optim.Adam(self.world_params, lr=world_lr, weight_decay=weight_decay)
         self.critic_optim = optim.Adam(self.critic_params, lr=critic_lr, weight_decay=weight_decay)
         self.actor_optim = optim.Adam(self.actor_params, lr=actor_lr, weight_decay=weight_decay)
         self.entropy_optim = optim.Adam(self.entropy_params, lr=entropy_lr, weight_decay=weight_decay)
@@ -87,24 +92,35 @@ class PPO(ActorCritic):
         critic_losses = []
         actor_losses = []
         entropies = []
+        if self.model_name in ["world"]:
+            keep_state_dict = True
+        else:
+            keep_state_dict = False
+
         for epoch in range(self.n_ppo_epochs):
-            data_generator = memory.get_ppo_data_generator(self.batch_size, advantages)
+            data_generator = memory.get_ppo_data_generator(self.batch_size, advantages, keep_state_dict)
 
             for sample in data_generator:
 
                 critic_loss, actor_loss, entropy = self.get_losses(*sample)
                 total_loss = critic_loss + actor_loss - self.ent_coef * entropy
 
+                if self.model_name in ["world"]:
+                    self.world_optim.zero_grad()
                 self.critic_optim.zero_grad()
                 self.actor_optim.zero_grad()
                 self.entropy_optim.zero_grad()
 
                 total_loss.backward()
 
+                if self.model_name in ["world"]:
+                    nn.utils.clip_grad_norm_(self.world_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.entropy_params, self.max_grad_norm)
 
+                if self.model_name in ["world"]:
+                    self.world_optim.step()
                 self.critic_optim.step()
                 self.actor_optim.step()
                 self.entropy_optim.step()

@@ -8,6 +8,7 @@ from pymunk import Vec2d
 from football2d.envs.ball import Ball
 from football2d.envs.player import Player_v0, Player_v1, Player_v2
 from pprint import pprint
+from collections import OrderedDict
 import ipdb
 
 CENTER = Vec2d(600, 400)
@@ -63,18 +64,25 @@ class SelfTraining_v0(gym.Env):
         # Observations are dictionaries with the agent's and the target's location.
         # Each location is encoded as an element of {0, ..., `size`}^2, i.e. MultiDiscrete([size, size]).
         self.observation_space = spaces.Dict(
-            {
+            OrderedDict({
                 "ball_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "ball_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "player_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "player_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
-            }
+            })
         )
 
         # 4 continuous action space
         # first two is player moving acceleration, along x and y
         # second two is player kicking momentum, along x and y
+        
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(4, ), dtype=np.float32)
+        #self.action_space = spaces.Dict(
+        #    OrderedDict({
+        #        "player_acceleration": spaces.Box(low=-1.0, high=1.0, shape=(2, ), dtype=np.float32),
+        #        "kick_momentum": spaces.Box(low=-1.0, high=1.0, shape=(2, ), dtype=np.float32),
+        #    })
+        #)
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode

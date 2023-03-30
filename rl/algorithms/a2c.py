@@ -20,8 +20,8 @@ class A2C(ActorCritic):
     (Synchronous) Advantage Actor-Critic agent class
 
     Args:
-        n_features: The number of features of the input state.
-        n_actions: The number of actions the agent can take.
+        feature_shape: The number of features of the input state.
+        action_shape: The number of actions the agent can take.
         device: The device to run the computations on (running on a GPU might be quicker for larger Neural Nets,
                 for this code CPU is totally fine).
         critic_lr: The learning rate for the critic network (should usually be larger than the actor_lr).
@@ -32,8 +32,8 @@ class A2C(ActorCritic):
     def __init__(
         self,
         model_name: str,
-        n_features: int,
-        n_actions: int,
+        feature_shape: int,
+        action_shape: int,
         hidden_size: int,
         output_activation: str,
         device: torch.device,
@@ -49,7 +49,7 @@ class A2C(ActorCritic):
         dropout=0.0
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
-        super().__init__(model_name, n_features, n_actions, hidden_size, output_activation,
+        super().__init__(model_name, feature_shape, action_shape, hidden_size, output_activation,
                          device, init_scale, n_envs, normalize_factor, dropout)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm

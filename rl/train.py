@@ -94,6 +94,8 @@ def parse_args():
                         help="GAE hyperparameter. lam=1 corresponds to MC sampling; lam=0 corresponds to TD-learning.")
     parser.add_argument("--ent_coef", type=float, default=0.001,
                         help="coefficient for the entropy bonus (to encourage exploration)")
+    parser.add_argument("--world_lr", type=float, default=1e-3,
+                        help="actor learning rate")
     parser.add_argument("--actor_lr", type=float, default=1e-3,
                         help="actor learning rate")
     parser.add_argument("--critic_lr", type=float, default=5e-3,
@@ -123,6 +125,10 @@ def parse_args():
                         help="use auxiliary reward")
     parser.add_argument("--auxiliary_reward_type", type=str, default="default",
                         help="auxiliary reward type to choose")
+    parser.add_argument("--only_train_move", action="store_true",
+                        help="for world model, only train the move action")
+    parser.add_argument("--only_train_kick", action="store_true",
+                        help="for world model, only train the kick action")
     # save model
     parser.add_argument("--name", type=str, default="default",
                         help="model name to save")
@@ -184,10 +190,28 @@ def main(args):
     envs = VectorEnvPyTorchWrapper(envs, device)
     
     if envs.single_observation_space.__class__.__name__ == "Dict":
-        args.obs_shape = sum([obs_box.shape[0] for key, obs_box in envs.single_observation_space.items()])
+        args.obs_shape = [obs_box.shape[0] for key, obs_box in envs.single_observation_space.items()]
     else:
         args.obs_shape = envs.single_observation_space.shape[0]
-    args.action_shape = envs.single_action_space.shape[0]
+
+    #if envs.single_action_space.__class__.__name__ == "Dict":
+    #    args.action_shape = [action_box.shape[0] for key, action_box in envs.single_action_space.items()]
+    #else:
+    #    args.action_shape = envs.single_action_space.shape[0]
+
+
+    # Manually define action shape
+    def get_action_shape(env_name):
+        four_action_names = ["SelfTraining-v0", "SelfTraining-v1"]
+        five_action_names = ["SelfTraining-v2"]
+        if env_name in four_action_names:
+            return [2, 2]
+        elif env_name in five_action_names:
+            return [2, 2, 1]
+        else:
+            raise KeyError("Unknown action type")
+    args.action_shape = get_action_shape(args.env_name)
+    assert sum(args.action_shape) == envs.single_action_space.shape[0]
     
     
     # save model dir
@@ -244,6 +268,7 @@ def main(args):
                     args.batch_size,
                     args.n_ppo_epochs,
                     args.clip_param,
+                    args.world_lr,
                     args.critic_lr, 
                     args.actor_lr, 
                     args.entropy_lr, 
@@ -257,11 +282,25 @@ def main(args):
     else:
         raise KeyError("algorithm {} not implemented".format(args.algorithm))
 
-    if args.lr_scheduler == "none":
-        lr_scheduler_actor = None
-        lr_scheduler_critic = None
-        lr_scheduler_entropy = None
-    elif args.lr_scheduler == "linear":
+    if args.model_name in ["world"]:
+        if args.only_train_move:
+            agent.actor.sub_actors[1].requires_grad_(False)
+            agent.actor.sub_actors[1][-2].weight.zero_()
+            agent.actor.sub_actors[1][-2].bias.zero_()
+
+        if args.only_train_kick:
+            agent.actor.sub_actors[0].requires_grad_(False)
+            agent.actor.sub_actors[0][-2].weight.zero_()
+            agent.actor.sub_actors[0][-2].bias.zero_()
+
+    lr_scheduler_world = None
+    lr_scheduler_actor = None
+    lr_scheduler_critic = None
+    lr_scheduler_entropy = None
+    if args.lr_scheduler == "linear":
+        if args.model_name in ["world"]:
+            lr_scheduler_world = LinearLR(agent.world_optim, start_factor=1.0, end_factor=0.0, 
+                                          total_iters=args.n_updates)
         lr_scheduler_actor = LinearLR(agent.actor_optim, start_factor=1.0, end_factor=0.0, 
                                       total_iters=args.n_updates)
         lr_scheduler_critic = LinearLR(agent.critic_optim, start_factor=1.0, end_factor=0.0, 
@@ -269,6 +308,8 @@ def main(args):
         lr_scheduler_entropy = LinearLR(agent.entropy_optim, start_factor=1.0, end_factor=0.0, 
                                         total_iters=args.n_updates)
     elif args.lr_scheduler == "cosineannealing":
+        if args.model_name in ["world"]:
+            lr_scheduler_world = CosineAnnealingLR(agent.world_optim, T_max=args.n_updates)
         lr_scheduler_actor = CosineAnnealingLR(agent.actor_optim, T_max=args.n_updates)
         lr_scheduler_critic = CosineAnnealingLR(agent.critic_optim, T_max=args.n_updates)
         lr_scheduler_entropy = CosineAnnealingLR(agent.entropy_optim, T_max=args.n_updates)
@@ -299,7 +340,7 @@ def main(args):
     # create a wrapper environment to save episode returns and episode lengths
     envs_wrapper = PyTorchRecordEpisodeStatistics(envs, deque_size=args.n_envs * args.n_updates, device=device,
                                                   auxiliary_reward_manager=auxiliary_reward_manager)
-    
+
     
     episode_rewards = deque(maxlen=args.n_envs)
     episode_lengths = deque(maxlen=args.n_envs)
@@ -362,7 +403,7 @@ def main(args):
 
         # clear memory
         memory.after_update()
-    
+
         ##############################################
         # Start of Tensorboard logging
         ##############################################
@@ -401,6 +442,8 @@ def main(args):
                 writer.add_scalar("{}_final_info/{}".format(args.env_name, info_key), info_value_mean, update_step)
 
         # lr
+        if args.model_name in ["world"]:
+            writer.add_scalar("optimizer/world_lr", agent.world_optim.param_groups[0]["lr"], update_step)
         writer.add_scalar("optimizer/actor_lr", agent.actor_optim.param_groups[0]["lr"], update_step)
         writer.add_scalar("optimizer/critic_lr", agent.critic_optim.param_groups[0]["lr"], update_step)
         writer.add_scalar("optimizer/entropy_lr", agent.entropy_optim.param_groups[0]["lr"], update_step)
@@ -416,6 +459,8 @@ def main(args):
         ##############################################
 
         # adjust lr
+        if lr_scheduler_world is not None:
+            lr_scheduler_world.step()
         if lr_scheduler_actor is not None:
             lr_scheduler_actor.step()
         if lr_scheduler_critic is not None:
