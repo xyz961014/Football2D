@@ -61,6 +61,7 @@ class Player_v0(object):
         self.kick_count_down = 0
         
         self.acceleration = Vec2d.zero()
+        self.last_kick_momentum = np.zeros(2)
         self.action = None
         self.kicked_ball = False
         self.fixed_on_border = False
@@ -163,6 +164,8 @@ class Player_v0(object):
                                                                           action[0], action[1])
         action_strs["kick_momentum"] = "{:20}: ({:8.4f}, {:8.4f})".format("Kick momentum", 
                                                                           action[2], action[3])
+        action_strs["last_kick_momentum"] = "{:20}: ({:8.4f}, {:8.4f})".format("Last kick momentum", 
+                                                                               *self.last_kick_momentum)
         return action_strs
 
     def act(self, action, ball):
@@ -185,6 +188,7 @@ class Player_v0(object):
             ball.kicked(kick_momentum)
             self.kicked_ball = True
             self.kick_count_down = self.kick_interval
+            self.last_kick_momentum = action[2: 4]
         else:
             self.kicked_ball = False
 

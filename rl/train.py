@@ -221,11 +221,15 @@ def main(args):
     
     def save_model(dir_name):
         hyperparams_path = os.path.join(dir_name, "hyperparams.json")
+        if args.model_name in ["world"]:
+            world_weights_path = os.path.join(dir_name, "world_weights.pt")
         actor_weights_path = os.path.join(dir_name, "actor_weights.pt")
         critic_weights_path = os.path.join(dir_name, "critic_weights.pt")
         dist_weights_path = os.path.join(dir_name, "training_dist_weights.pt")
         
         json.dump(args.__dict__, open(hyperparams_path, "w"), indent=4)
+        if args.model_name in ["world"]:
+            torch.save(agent.world_encoder.state_dict(), world_weights_path)
         torch.save(agent.actor.state_dict(), actor_weights_path)
         torch.save(agent.critic.state_dict(), critic_weights_path)
         torch.save(agent.dist.state_dict(), dist_weights_path)
@@ -320,12 +324,16 @@ def main(args):
     if args.load_model:
         """ load network weights """
         hyperparams_path = os.path.join(args.load_dir, "hyperparams.json")
+        world_weights_path = os.path.join(args.load_dir, "world_weights.pt")
         actor_weights_path = os.path.join(args.load_dir, "actor_weights.pt")
         critic_weights_path = os.path.join(args.load_dir, "critic_weights.pt")
         dist_weights_path = os.path.join(args.load_dir, "training_dist_weights.pt")
     
         model_args = json.load(open(hyperparams_path, "r"))
         assert args.algorithm == model_args["algorithm"]
+        assert args.model_name == model_args["model_name"]
+        if args.model_name in ["world"]:
+            agent.world_encoder.load_state_dict(torch.load(world_weights_path))
         agent.actor.load_state_dict(torch.load(actor_weights_path))
         agent.critic.load_state_dict(torch.load(critic_weights_path))
         if os.path.exists(dist_weights_path):

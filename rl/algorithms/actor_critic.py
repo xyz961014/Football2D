@@ -88,14 +88,14 @@ class ActorCritic(nn.Module):
                 raise KeyError("Unknown output activation")
 
             # define actor and critic networks
-            self.critic = nn.Sequential(*critic_layers).to(self.device)
-            self.actor = nn.Sequential(*actor_layers).to(self.device)
+            self.critic = nn.Sequential(*critic_layers)
+            self.actor = nn.Sequential(*actor_layers)
 
         elif model_name == "world":
             self.world_encoder = WorldEncoder(feature_shape, hidden_size, dropout)
             self.critic = nn.Sequential(
                                 nn.Linear(hidden_size, hidden_size),
-                                nn.ReLU(),
+                                nn.GELU(),
                                 nn.Dropout(p=dropout),
                                 nn.Linear(hidden_size, 1)
                             )
@@ -204,14 +204,14 @@ class WorldEncoder(nn.Module):
         self.world_encoders = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(n_feature, hidden_size),
-                nn.ReLU(),
+                nn.GELU(),
                 nn.Dropout(p=dropout),
             )
             for n_feature in feature_shape
         ])
         self.world_gather = nn.Sequential(
                 nn.Linear(hidden_size * len(feature_shape), hidden_size),
-                nn.ReLU(),
+                nn.GELU(),
                 nn.Dropout(p=dropout),
         )
 
@@ -239,7 +239,7 @@ class SubdividedActor(nn.Module):
         self.sub_actors = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
-                nn.ReLU(),
+                nn.GELU(),
                 nn.Dropout(p=dropout),
                 nn.Linear(hidden_size, action_size),
                 activation_module

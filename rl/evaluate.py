@@ -71,6 +71,7 @@ device = torch.device("cpu")
 
 """ load network weights """
 hyperparams_path = os.path.join(args.load_dir, "hyperparams.json")
+world_weights_path = os.path.join(args.load_dir, "world_weights.pt")
 actor_weights_path = os.path.join(args.load_dir, "actor_weights.pt")
 critic_weights_path = os.path.join(args.load_dir, "critic_weights.pt")
 
@@ -106,6 +107,8 @@ if args.silent:
 else:
     render_mode = "human"
 
+if model_name in ["world"]:
+    agent.world_encoder.load_state_dict(torch.load(world_weights_path))
 agent.actor.load_state_dict(torch.load(actor_weights_path))
 agent.critic.load_state_dict(torch.load(critic_weights_path))
 agent.eval()
@@ -117,7 +120,6 @@ if args.standard_test:
     standard_positions = np.concatenate((xx, yy)).reshape(2, 11 * 11).transpose()
 
     args.randomize_domain = False
-    args.show_auxiliary_reward = False
     args.n_episodes = 11 * 11
 
     # init SummaryWriter
