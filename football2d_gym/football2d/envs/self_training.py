@@ -206,6 +206,7 @@ class SelfTraining_v0(gym.Env):
         if self.window is None and self.render_mode == "human":
             pygame.init()
             pygame.display.init()
+            pygame.display.set_caption(self.__class__.__name__)
             self.window = pygame.display.set_mode((self.window_width, self.window_height))
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()

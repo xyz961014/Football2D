@@ -61,7 +61,7 @@ class Player_v0(object):
         self.kick_count_down = 0
         
         self.acceleration = Vec2d.zero()
-        self.last_kick_momentum = np.zeros(2)
+        self.last_kick_momentum = Vec2d.zero()
         self.action = None
         self.kicked_ball = False
         self.fixed_on_border = False
@@ -160,12 +160,15 @@ class Player_v0(object):
     def get_action_strs(self):
         action = self.action if self.action is not None else np.zeros(5)
         action_strs = {}
-        action_strs["acceleration"]  = "{:20}: ({:8.4f}, {:8.4f})".format("Acceleration", 
+        action_strs["acceleration"]  = "{:25}: ({:8.4f}, {:8.4f})".format("Acceleration", 
                                                                           action[0], action[1])
-        action_strs["kick_momentum"] = "{:20}: ({:8.4f}, {:8.4f})".format("Kick momentum", 
+        action_strs["kick_momentum"] = "{:25}: ({:8.4f}, {:8.4f})".format("Kick momentum", 
                                                                           action[2], action[3])
-        action_strs["last_kick_momentum"] = "{:20}: ({:8.4f}, {:8.4f})".format("Last kick momentum", 
+        action_strs["last_kick_momentum"] = "{:25}: ({:8.4f}, {:8.4f})".format("Last kick momentum", 
                                                                                *self.last_kick_momentum)
+        action_strs["last_kick_momentum_value"] = "{:25}: {:9.4f}           ".format(
+                "Last kick momentum value", 
+                self.last_kick_momentum.length)
         return action_strs
 
     def act(self, action, ball):
@@ -184,11 +187,14 @@ class Player_v0(object):
         # Kick the ball if in range
         if self.kick_count_down > 0:
             self.kick_count_down -= timeDelta
-        if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range:
+        if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range and kick_momentum.length > 0:
             ball.kicked(kick_momentum)
             self.kicked_ball = True
             self.kick_count_down = self.kick_interval
-            self.last_kick_momentum = action[2: 4]
+
+            self.last_kick_momentum = Vec2d(*action[2: 4])
+            if self.last_kick_momentum.length > 1:
+                self.last_kick_momentum = self.last_kick_momentum.normalized()
         else:
             self.kicked_ball = False
 

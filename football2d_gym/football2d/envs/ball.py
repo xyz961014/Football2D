@@ -113,10 +113,10 @@ class Ball(object):
             x = min(max(self.position.x, -1050 / 2 - 35), 1050 / 2 + 35)
             self.position = Vec2d(x, self.position.y)
             fix_x = self.position.x <= -1050 / 2 - 35 or self.position.x >= 1050 / 2 + 35
-        elif -1050 / 2 < self.position.x < 1050 / 2:
-            y = min(max(self.position.y, -680 / 2), 680 / 2)
+        elif -1050 / 2 - self.size / 2 < self.position.x < 1050 / 2 + self.size / 2:
+            y = min(max(self.position.y, -680 / 2 - self.size / 2), 680 / 2 + self.size / 2)
             self.position = Vec2d(self.position.x, y)
-            fix_y = self.position.y <= -680 / 2 or self.position.y >= 680 / 2
+            fix_y = self.position.y <= -680 / 2 - self.size / 2 or self.position.y >= 680 / 2 + self.size / 2
         else:
             if self.goal:
                 y = self.position.y
@@ -128,11 +128,11 @@ class Ball(object):
                     fix_y = True
                 self.position = Vec2d(self.position.x, y)
             else:
-                x = min(max(self.position.x, -1050 / 2), 1050 / 2)
-                y = min(max(self.position.y, -680 / 2), 680 / 2)
+                x = min(max(self.position.x, -1050 / 2 - self.size / 2), 1050 / 2 + self.size / 2)
+                y = min(max(self.position.y, -680 / 2 - self.size / 2), 680 / 2 + self.size / 2)
                 self.position = Vec2d(x, y)
-                fix_x = self.position.x <= -1050 / 2 or self.position.x >= 1050 / 2
-                fix_y = self.position.y <= -680 / 2 or self.position.y >= 680 / 2
+                fix_x = self.position.x <= -1050 / 2 - self.size / 2 or self.position.x >= 1050 / 2 + self.size / 2
+                fix_y = self.position.y <= -680 / 2 - self.size / 2 or self.position.y >= 680 / 2 + self.size / 2
 
         return fix_x, fix_y
 
@@ -143,9 +143,9 @@ class Ball(object):
     def out_of_pitch(self):
         out_of_x = False
         out_of_y = False
-        if not -1050 / 2 < self.position.x < 1050 / 2:
+        if not -1050 / 2 - self.size / 2 < self.position.x < 1050 / 2 + self.size / 2:
             out_of_x = True
-        if not -680 / 2 < self.position.y < 680 / 2:
+        if not -680 / 2 - self.size / 2 < self.position.y < 680 / 2 + self.size / 2:
             out_of_y = True
         self.out = out_of_x or out_of_y
 
@@ -203,7 +203,7 @@ class Ball(object):
             return
         
         # ball can not go throuth the player
-        if not self.rebound_from_player:
+        if not self.rebound_from_player and not player.kicked_ball:
             inner_angle = d_to_player.get_angle_between(self.speed)
             position_fix_len = np.sqrt(np.square(player.rebound_range) - np.square(d_to_player.length * np.sin(inner_angle))) - d_to_player.length * np.cos(inner_angle)
             self.position = self.position - self.speed.normalized() * position_fix_len

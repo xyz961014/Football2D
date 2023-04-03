@@ -289,13 +289,13 @@ def main(args):
     if args.model_name in ["world"]:
         if args.only_train_move:
             agent.actor.sub_actors[1].requires_grad_(False)
-            agent.actor.sub_actors[1][-2].weight.zero_()
-            agent.actor.sub_actors[1][-2].bias.zero_()
+            #agent.actor.sub_actors[1][-2].weight.zero_()
+            #agent.actor.sub_actors[1][-2].bias.zero_()
 
         if args.only_train_kick:
             agent.actor.sub_actors[0].requires_grad_(False)
-            agent.actor.sub_actors[0][-2].weight.zero_()
-            agent.actor.sub_actors[0][-2].bias.zero_()
+            #agent.actor.sub_actors[0][-2].weight.zero_()
+            #agent.actor.sub_actors[0][-2].bias.zero_()
 
     lr_scheduler_world = None
     lr_scheduler_actor = None

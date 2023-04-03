@@ -3,7 +3,7 @@ import football2d
 import numpy as np
 import time
 import ipdb
-env = gym.make('football2d/SelfTraining-v0', render_mode="human", 
+env = gym.make('football2d/SelfTraining-v1', render_mode="human", 
                learn_to_kick=True,
                randomize_position=False,
                ball_position=(0, 20))
