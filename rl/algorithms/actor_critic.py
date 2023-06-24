@@ -206,6 +206,7 @@ class WorldEncoder(nn.Module):
                 nn.Linear(n_feature, hidden_size),
                 nn.GELU(),
                 nn.Dropout(p=dropout),
+                nn.LayerNorm(hidden_size)
             )
             for n_feature in feature_shape
         ])
@@ -213,6 +214,7 @@ class WorldEncoder(nn.Module):
                 nn.Linear(hidden_size * len(feature_shape), hidden_size),
                 nn.GELU(),
                 nn.Dropout(p=dropout),
+                nn.LayerNorm(hidden_size)
         )
 
     def forward(self, input_dict):

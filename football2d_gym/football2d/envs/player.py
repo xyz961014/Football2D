@@ -1,12 +1,16 @@
 import pygame
 from pymunk import Vec2d
 import numpy as np
+from copy import copy
 import ipdb
 
+from football2d.envs.colors import (
+    RED,
+    BLACK,
+    WHITE
+    )
+
 CENTER = Vec2d(600, 400)
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-PLAYER_RED = (200, 0, 0)
 PLAYER_SIZE = 15
 PLAYER_MASS = 75
 
@@ -17,7 +21,7 @@ MAX_ACCELERATION = 100
 MAX_MOMENTUM = 150
 KICK_INTERVAL = 0.2
 RUNUP_FACTOR = 1
-RESISTANCE_FACTOR = 10
+RESISTANCE_FACTOR = 1
 
 # v1
 DIRECTION_UNCERTAINTY = 0.1
@@ -29,6 +33,7 @@ MAX_BACKWARD_SPEED = 25
 MAX_BACKWARD_ACCELERATION = 25
 MAX_ANGULAR_SPEED = 10
 MAX_ANGULAR_ACCELERATION = 50
+ANGULAR_RESISTANCE_FACTOR = 8
 HEADING_DIRECTION_UNCERTAINTY = 0.1
 HEADING_POWER_UNCERTAINTY = 20
 HEADING_POWER_DIFFICULTY = 75
@@ -42,8 +47,8 @@ class Player_v0(object):
                        max_momentum=MAX_MOMENTUM,
                        resistance_factor=RESISTANCE_FACTOR,
                        kick_interval=KICK_INTERVAL,
-                       name="Robben", number=10, 
-                       color=PLAYER_RED, size=PLAYER_SIZE):
+                       name="Robben", number=10, side="home",
+                       color=RED, size=PLAYER_SIZE):
         super().__init__()
         # player state
         self.position = position
@@ -66,6 +71,7 @@ class Player_v0(object):
         self.kicked_ball = False
         self.fixed_on_border = False
 
+        self.side = side
         # useless player attributes
         self.name = name
         self.number = number
@@ -80,6 +86,13 @@ class Player_v0(object):
 
     def observe_speed(self):
         return np.array([self.speed.x, self.speed.y], dtype=np.float32)
+
+    def get_info(self):
+        return {
+                "position": self.observe_position(),
+                "speed": self.observe_speed(),
+                "kicked_ball": self.kicked_ball
+               }
 
     def draw_text(self, text, size, font_name=None, x=CENTER.x, y=CENTER.y, color=BLACK, name="text"):
         font_name = pygame.font.get_default_font() if font_name is None else font_name
@@ -152,8 +165,54 @@ class Player_v0(object):
 
         return fix_x, fix_y
 
+    def fix_in_own_half(self):
+        if self.side == "home":
+            if self.position.x > 0:
+                self.position = Vec2d(0, self.position.y)
+                self.speed = Vec2d.zero()
+        elif self.side == "away":
+            if self.position.x < 0:
+                self.position = Vec2d(0, self.position.y)
+                self.speed = Vec2d.zero()
+
+    def fix_out_of_oppo_box(self):
+        if self.side == "home":
+            if 1050 / 2 - 165 < self.position.x < 1050 / 2 and -165 - 37.5 < self.position.y < 165 + 37.5:
+                margin_left = max(0, self.position.x - (1050 / 2 - 165))
+                margin_right = max(0, 1050 / 2 - self.position.x)
+                margin_top = max(0, self.position.y - (-165 - 37.5))
+                margin_bottom = max(0, 165 + 37.5 - self.position.y)
+
+                margin_min = min(margin_left, margin_right, margin_top, margin_bottom)
+                if margin_left == margin_min:
+                    self.position = Vec2d(1050 / 2 - 165, self.position.y)
+                elif margin_right == margin_min:
+                    self.position = Vec2d(1050 / 2, self.position.y)
+                elif margin_top == margin_min:
+                    self.position = Vec2d(self.position.x, -165 - 37.5)
+                elif margin_bottom == margin_min:
+                    self.position = Vec2d(self.position.x, 165 + 37.5)
+                self.speed = Vec2d.zero()
+        elif self.side == "away":
+            if -1050 / 2 < self.position.x < -1050 / 2 + 165 and -165 - 37.5 < self.position.y < 165 + 37.5:
+                margin_left = max(0, self.position.x - (-1050 / 2))
+                margin_right = max(0, -1050 / 2 + 165 - self.position.x)
+                margin_top = max(0, self.position.y - (-165 - 37.5))
+                margin_bottom = max(0, 165 + 37.5 - self.position.y)
+
+                margin_min = min(margin_left, margin_right, margin_top, margin_bottom)
+                if margin_left == margin_min:
+                    self.position = Vec2d(-1050 / 2, self.position.y)
+                elif margin_right == margin_min:
+                    self.position = Vec2d(-1050 / 2 + 165, self.position.y)
+                elif margin_top == margin_min:
+                    self.position = Vec2d(self.position.x, -165 - 37.5)
+                elif margin_bottom == margin_min:
+                    self.position = Vec2d(self.position.x, 165 + 37.5)
+                self.speed = Vec2d.zero()
+
     def get_acceleration(self):
-        force = self.resistance_factor * self.mass
+        force = self.resistance_factor * self.mass * self.speed.length
         acceleration = self.acceleration - self.speed.normalized() * force / self.mass
         return acceleration
 
@@ -188,7 +247,7 @@ class Player_v0(object):
         if self.kick_count_down > 0:
             self.kick_count_down -= timeDelta
         if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range and kick_momentum.length > 0:
-            ball.kicked(kick_momentum)
+            ball.kicked(kick_momentum, self)
             self.kicked_ball = True
             self.kick_count_down = self.kick_interval
 
@@ -210,7 +269,7 @@ class Player_v0(object):
 
         return home_goal or away_goal
 
-    def update(self):
+    def update(self, ball=None):
         acceleration = self.get_acceleration()
         self.speed = self.speed + acceleration * timeDelta
         if self.speed.length > self.max_speed:
@@ -236,15 +295,16 @@ class Player_v1(Player_v0):
                        max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
                        max_momentum=MAX_MOMENTUM,
                        resistance_factor=RESISTANCE_FACTOR,
-                       name="Robben", number=10, 
-                       color=PLAYER_RED, size=PLAYER_SIZE,
+                       kick_interval=KICK_INTERVAL,
+                       name="Robben", number=10, side="home",
+                       color=RED, size=PLAYER_SIZE,
                        # new attributes for v1
                        direction_uncertainty=DIRECTION_UNCERTAINTY,
                        power_uncertainty=POWER_UNCERTAINTY,
                        speed_uncertainty=SPEED_UNCERTAINTY
                        ):
         super().__init__(position, speed, mass, kick_range, rebound_range, max_speed, max_acceleration, max_momentum,
-                         resistance_factor, name, number, color, size)
+                         resistance_factor, kick_interval, name, number, side, color, size)
         self.direction_uncertainty = direction_uncertainty
         self.power_uncertainty = power_uncertainty
         self.speed_uncertainty = speed_uncertainty
@@ -280,9 +340,13 @@ class Player_v1(Player_v0):
         if self.kick_count_down > 0:
             self.kick_count_down -= timeDelta
         if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range:
-            ball.kicked(kick_momentum)
+            ball.kicked(kick_momentum, self)
             self.kicked_ball = True
             self.kick_count_down = self.kick_interval
+
+            self.last_kick_momentum = Vec2d(*action[2: 4])
+            if self.last_kick_momentum.length > 1:
+                self.last_kick_momentum = self.last_kick_momentum.normalized()
         else:
             self.kicked_ball = False
 
@@ -293,21 +357,23 @@ class Player_v2(Player_v1):
                        max_speed=MAX_SPEED, max_acceleration=MAX_ACCELERATION,  
                        max_momentum=MAX_MOMENTUM,
                        resistance_factor=RESISTANCE_FACTOR,
-                       name="Robben", number=10, 
-                       color=PLAYER_RED, size=PLAYER_SIZE,
+                       kick_interval=KICK_INTERVAL,
+                       name="Robben", number=10, side="home",
+                       color=RED, size=PLAYER_SIZE,
                        direction_uncertainty=DIRECTION_UNCERTAINTY,
                        power_uncertainty=POWER_UNCERTAINTY,
                        speed_uncertainty=SPEED_UNCERTAINTY,
                        # v2 attributes
-                       direction=Vec2d(1, 0), angular_speed=0,
+                       direction=Vec2d(1., 0.), angular_speed=0.,
                        max_backward_speed=MAX_BACKWARD_SPEED, max_backward_acceleration=MAX_BACKWARD_ACCELERATION,
                        max_angular_speed=MAX_ANGULAR_SPEED, max_angular_acceleration=MAX_ANGULAR_ACCELERATION,
+                       angular_resistance_factor=ANGULAR_RESISTANCE_FACTOR,
                        heading_direction_uncertainty=HEADING_DIRECTION_UNCERTAINTY,
                        heading_power_uncertainty=HEADING_POWER_UNCERTAINTY,
                        heading_power_difficulty=HEADING_POWER_DIFFICULTY
                        ):
         super().__init__(position, speed, mass, kick_range, rebound_range, max_speed, max_acceleration, max_momentum,
-                         resistance_factor, name, number, color, size,
+                         resistance_factor, kick_interval, name, number, side, color, size,
                          direction_uncertainty, power_uncertainty, speed_uncertainty)
         self.direction = direction
         self.angular_speed = angular_speed
@@ -316,6 +382,7 @@ class Player_v2(Player_v1):
         self.max_backward_acceleration = max_backward_acceleration
         self.max_angular_speed = max_angular_speed
         self.max_angular_acceleration = max_angular_acceleration
+        self.angular_resistance_factor = angular_resistance_factor
 
         self.heading_direction_uncertainty = heading_direction_uncertainty
         self.heading_power_uncertainty = heading_power_uncertainty
@@ -351,8 +418,18 @@ class Player_v2(Player_v1):
         return np.array([self.angular_speed, ], dtype=np.float32)
 
     def get_angular_acceleration(self):
-        # assume no resistance force for turning
-        return self.angular_acceleration
+        # add resistance force
+        angular_acceleration = self.angular_acceleration - self.angular_speed * self.angular_resistance_factor
+        return angular_acceleration
+
+    def get_info(self):
+        return {
+                "direction": self.observe_direction(),
+                "angular_speed": self.observe_angular_speed(),
+                "position": self.observe_position(),
+                "speed": self.observe_speed(),
+                "kicked_ball": self.kicked_ball
+               }
 
     def get_action_strs(self):
         action = self.action if self.action is not None else np.zeros(5)
@@ -412,14 +489,18 @@ class Player_v2(Player_v1):
         if self.kick_count_down > 0:
             self.kick_count_down -= timeDelta
         if self.kick_count_down <= 0 and (self.position - ball.position).length < self.kick_range:
-            ball.kicked(kick_momentum)
+            ball.kicked(kick_momentum, self)
             self.kicked_ball = True
             self.kick_count_down = self.kick_interval
+
+            self.last_kick_momentum = Vec2d(*action[2: 4])
+            if self.last_kick_momentum.length > 1:
+                self.last_kick_momentum = self.last_kick_momentum.normalized()
         else:
             self.kicked_ball = False
 
 
-    def update(self):
+    def update(self, ball=None):
         # angular update
         angular_acceleration = self.get_angular_acceleration()
         self.angular_speed = self.angular_speed + angular_acceleration * timeDelta
@@ -450,5 +531,161 @@ class Player_v2(Player_v1):
                 self.position = old_position
         else:
             self.fixed_on_border = False
+
+        if ball is not None:
+            if ball.possession_range > 0 and not ball.in_play and ball.possession != self.side:
+                # The opponent is restarting the game, keep distance
+                if self.position.get_distance(ball.position) < ball.possession_range:
+                    fixed_pos = ball.position + (self.position - ball.position).normalized() * ball.possession_range
+                    self.position = fixed_pos
+                    self.speed = Vec2d.zero()
+            if ball.status == "Start":
+                # Game start, do not enter opponent's side
+                self.fix_in_own_half()
+            if ball.status == "Goal kick" and ball.possession != self.side:
+                # Goal kick, do not enter opponent's box
+                self.fix_out_of_oppo_box()
+
+
+class Team(object):
+    def __init__(self, players=[], name="Bayern", color=RED, attacking_right=True):
+        super().__init__()
+        self.name = name
+        self.color = color
+        self.attacking_right = attacking_right
+
+        self.goal = 0
+
+        self.players = players
+        self.player_positions = []
+        self.player_speeds = []
+        self.player_directions = []
+        self.player_angular_speeds = []
+        for player in self.players:
+            player.color = color
+            self.player_positions.append(Vec2d(*player.position))
+            self.player_speeds.append(Vec2d(*player.speed))
+            self.player_directions.append(Vec2d(*player.direction))
+            self.player_angular_speeds.append(player.angular_speed)
+
+        self.start_player_positions = copy(self.player_positions)
+
+    def draw(self, canvas):
+        for player in self.players:
+            player.draw(canvas)
+
+    def blit_text(self, window):
+        for player in self.players:
+            player.blit_text(window)
+
+    def update(self, ball=None):
+        for player in self.players:
+            player.update(ball)
+
+    def reset(self):
+        for ind, player in enumerate(self.players):
+            player.position = self.player_positions[ind]
+            player.speed = self.player_speeds[ind]
+            player.direction = self.player_directions[ind]
+            player.angular_speed = self.player_angular_speeds[ind]
+
+    def set_start_positions(self, start_positions):
+        for i, position in enumerate(start_positions):
+            self.start_player_positions[i] = Vec2d(*position)
+
+    def start(self):
+        for ind, player in enumerate(self.players):
+            player.position = self.start_player_positions[ind]
+            player.speed = self.player_speeds[ind]
+            player.direction = self.player_directions[ind]
+            player.angular_speed = self.player_angular_speeds[ind]
+
+    def act(self, actions, ball):
+        assert len(self.players) == len(actions)
+        for player, action in list(zip(self.players, actions)):
+            if not self.attacking_right:
+                action[:4] = -action[:4]
+            player.act(action, ball)
+
+    def observe(self, ball, oppo_team):
+        ball_position = ball.observe_position()
+        ball_speed = ball.observe_speed()
+        if not self.attacking_right:
+            ball_position = -ball_position
+            ball_speed = -ball_speed
+        obs = {
+                "ball_position": ball_position,
+                "ball_speed": ball_speed
+              }
+
+        own_player_positions = []
+        own_player_speeds = []
+        own_player_directions = []
+        own_player_angular_speeds = []
+        for player in self.players:
+            player_posistion = player.observe_position()
+            player_speed = player.observe_speed()
+            player_direction = player.observe_direction()
+            player_angular_speed = player.observe_angular_speed()
+            if not self.attacking_right:
+                player_posistion = -player_posistion
+                player_speed = -player_speed
+                player_direction = -player_direction
+
+            own_player_positions.append(player_posistion[None, :])
+            own_player_speeds.append(player_speed[None, :])
+            own_player_directions.append(player_direction[None, :])
+            own_player_angular_speeds.append(player_angular_speed[None, :])
+
+        own_player_positions = np.concatenate(own_player_positions, axis=0)
+        own_player_speeds = np.concatenate(own_player_speeds, axis=0)
+        own_player_directions = np.concatenate(own_player_directions, axis=0)
+        own_player_angular_speeds = np.concatenate(own_player_angular_speeds, axis=0)
+
+        obs["own_player_positions"] = own_player_positions
+        obs["own_player_speeds"] = own_player_speeds
+        obs["own_player_directions"] = own_player_directions
+        obs["own_player_angular_speeds"] = own_player_angular_speeds
+
+        opponent_player_positions = []
+        opponent_player_speeds = []
+        opponent_player_directions = []
+        opponent_player_angular_speeds = []
+        for player in oppo_team.players:
+            player_posistion = player.observe_position()
+            player_speed = player.observe_speed()
+            player_direction = player.observe_direction()
+            player_angular_speed = player.observe_angular_speed()
+            if not self.attacking_right:
+                player_posistion = -player_posistion
+                player_speed = -player_speed
+                player_direction = -player_direction
+
+            opponent_player_positions.append(player_posistion[None, :])
+            opponent_player_speeds.append(player_speed[None, :])
+            opponent_player_directions.append(player_direction[None, :])
+            opponent_player_angular_speeds.append(player_angular_speed[None, :])
+
+        opponent_player_positions = np.concatenate(opponent_player_positions, axis=0)
+        opponent_player_speeds = np.concatenate(opponent_player_speeds, axis=0)
+        opponent_player_directions = np.concatenate(opponent_player_directions, axis=0)
+        opponent_player_angular_speeds = np.concatenate(opponent_player_angular_speeds, axis=0)
+
+        obs["opponent_player_positions"] = opponent_player_positions
+        obs["opponent_player_speeds"] = opponent_player_speeds
+        obs["opponent_player_directions"] = opponent_player_directions
+        obs["opponent_player_angular_speeds"] = opponent_player_angular_speeds
+
+        return obs
+
+    def get_info(self):
+        # wihtout flipping
+        info = {}
+        for ind, player in enumerate(self.players):
+            info["#{}".format(player.number)] = player.get_info()
+        return info
+
+
+
 
 

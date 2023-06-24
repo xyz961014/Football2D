@@ -7,21 +7,17 @@ import string
 from pymunk import Vec2d
 from football2d.envs.ball import Ball
 from football2d.envs.player import Player_v0, Player_v1, Player_v2
+from football2d.envs.field import Field
 from pprint import pprint
 from collections import OrderedDict
 import ipdb
 
-CENTER = Vec2d(600, 400)
-PITCH_GREEN = (0, 128, 0)
-LINE_WHITE = (220, 220, 220)
-GOAL_WHITE = (180, 180, 180)
-TIME_WHITE = (240, 240, 240)
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-YELLOW = (220, 220, 0)
-SKYBLUE = (135, 206, 250)
-LINE_WIDTH = 3
-GOAL_WIDTH = 3
+from football2d.envs.colors import (
+    TIME_WHITE,
+    WHITE,
+    BLACK,
+    SKYBLUE
+    )
 
 TIME_TEXT_SIZE = 25
 GOAL_TEXT_SIZE = 40
@@ -29,7 +25,8 @@ REWARD_TEXT_SIZE = 20
 STATE_ACTION_TEXT_SIZE = 18
 
 timeDelta = 0.02
-FIX_PRECISION = 1e-3
+FIXED_PRECISION = 1e-3
+
 
 class SelfTraining_v0(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 50}
@@ -40,13 +37,15 @@ class SelfTraining_v0(gym.Env):
         self.time_limit = time_limit
         self.window_width = 1200  # The size of the PyGame window
         self.window_height = 900  # The size of the PyGame window
-        self.center_point = CENTER
 
         self.ball_position = ball_position
         self.player_position = player_position
 
         self.randomize_position = randomize_position
         self.learn_to_kick = learn_to_kick
+        self.player_cls = Player_v0
+
+        self.field = Field()
 
         # Position of ball and player are relative to the center point
         if self.randomize_position:
@@ -108,6 +107,10 @@ class SelfTraining_v0(gym.Env):
 
     def _get_info(self):
         return {
+                "ball_position": self.ball.observe_position(),
+                "ball_speed": self.ball.observe_speed(),
+                "player_position": self.player.observe_position(),
+                "player_speed": self.player.observe_speed(),
                 "distance_to_ball": self.ball.distance_to(self.player.position),
                 "distance_to_goal": self.ball.distance_to_right_goal(),
                 "kicked_ball": self.player.kicked_ball
@@ -131,18 +134,18 @@ class SelfTraining_v0(gym.Env):
 
         return obs_strs
 
-
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         # Position of ball and player are relative to the center point
         if self.randomize_position:
-            self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
-            self.player = Player_v0(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
+            self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)), 
+                             can_be_out=self.ball.can_be_out)
+            self.player = self.player_cls(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
         else:
-            self.ball = Ball(Vec2d(*self.ball_position), Vec2d.zero())
-            self.player = Player_v0(Vec2d(*self.player_position))
+            self.ball = Ball(Vec2d(*self.ball_position), Vec2d.zero(), can_be_out=self.ball.can_be_out)
+            self.player = self.player_cls(Vec2d(*self.player_position))
         if self.learn_to_kick:
             self.player.position = self.ball.position
 
@@ -183,7 +186,7 @@ class SelfTraining_v0(gym.Env):
         if self.ball.goal: 
             #print("Game terminated. Goal.")
             self.terminated = True
-        if self.time >= self.time_limit - FIX_PRECISION:
+        if self.time >= self.time_limit - FIXED_PRECISION:
             #print("Game truncated. Reach time limit.")
             self.truncated = True
 
@@ -199,7 +202,7 @@ class SelfTraining_v0(gym.Env):
         self.accumulated_reward += reward
 
     def render(self):
-        if self.render_mode == "rgb_array":
+        if self.render_mode == "human":
             return self._render_frame()
 
     def _render_frame(self):
@@ -212,183 +215,7 @@ class SelfTraining_v0(gym.Env):
             self.clock = pygame.time.Clock()
 
         canvas = pygame.Surface((self.window_width, self.window_height))
-        canvas.fill(PITCH_GREEN)
-
-        # First we draw the left half pitch
-        pygame.draw.rect(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75, 60),
-                (1050, 680),
-            ),
-            width=LINE_WIDTH
-        )
-        # Now we draw the center circle
-        pygame.draw.circle(
-            canvas,
-            LINE_WHITE,
-            (600, 400),
-            91.5,
-            width=LINE_WIDTH
-        )
-        # Now we draw the center line
-        pygame.draw.line(
-            canvas,
-            LINE_WHITE,
-            (600, 400 - 680 / 2),
-            (600, 400 + 680 / 2 - LINE_WIDTH),
-            width=LINE_WIDTH,
-        )
-        # Now we draw the goals
-        pygame.draw.rect(
-            canvas,
-            GOAL_WHITE,
-            pygame.Rect(
-                (75 - 35 + LINE_WIDTH - GOAL_WIDTH * 2, 60 + 680 / 2 - 37.5 - GOAL_WIDTH),
-                (35 + GOAL_WIDTH * 2, 75 + GOAL_WIDTH * 2),
-            ),
-            width=GOAL_WIDTH
-        )
-        pygame.draw.rect(
-            canvas,
-            GOAL_WHITE,
-            pygame.Rect(
-                (75 + 1050 - LINE_WIDTH, 60 + 680 / 2 - 37.5 - GOAL_WIDTH),
-                (35 + GOAL_WIDTH * 2, 75 + GOAL_WIDTH * 2),
-            ),
-            width=GOAL_WIDTH
-        )
-        # Now we draw the boxes
-        pygame.draw.rect(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75, 60 + 680 / 2 - 165 - 37.5),
-                (165, 405),
-            ),
-            width=LINE_WIDTH
-        )
-        pygame.draw.rect(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75, 60 + 680 / 2 - 55 - 37.5),
-                (55, 185),
-            ),
-            width=LINE_WIDTH
-        )
-        pygame.draw.rect(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 + 1050 - 165, 60 + 680 / 2 - 165 - 37.5),
-                (165, 405),
-            ),
-            width=LINE_WIDTH
-        )
-        pygame.draw.rect(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 + 1050 - 55, 60 + 680 / 2 - 55 - 37.5),
-                (55, 185),
-            ),
-            width=LINE_WIDTH
-        )
-        # Now draw penalty points
-        pygame.draw.circle(
-            canvas,
-            LINE_WHITE,
-            (75 + 110, 60 + 680 / 2),
-            LINE_WIDTH,
-            width=LINE_WIDTH
-        )
-        pygame.draw.circle(
-            canvas,
-            LINE_WHITE,
-            (75 + 1050 - 110, 60 + 680 / 2),
-            LINE_WIDTH,
-            width=LINE_WIDTH
-        )
-        # Now draw center points
-        pygame.draw.circle(
-            canvas,
-            LINE_WHITE,
-            (600, 400),
-            LINE_WIDTH,
-            width=LINE_WIDTH
-        )
-        
-        # Now we draw the box arcs
-        pygame.draw.arc(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 + 110 - 91.5, 60 + 680 / 2 - 91.5),
-                (91.5 * 2, 91.5 * 2),
-            ),
-            start_angle = -0.926,
-            stop_angle  = 0.926,
-            width=LINE_WIDTH
-        )
-        pygame.draw.arc(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 + 1050 - 110 - 91.5, 60 + 680 / 2 - 91.5),
-                (91.5 * 2, 91.5 * 2),
-            ),
-            start_angle = -0.926 + np.pi,
-            stop_angle  = 0.926 + np.pi,
-            width=LINE_WIDTH
-        )
-
-        # Now we draw the corner arcs
-        pygame.draw.arc(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 - 10, 60 - 10),
-                (20, 20),
-            ),
-            start_angle = -np.pi / 2,
-            stop_angle  = 0,
-            width=LINE_WIDTH
-        )
-        pygame.draw.arc(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 - 10, 60 + 680 - 10 - LINE_WIDTH),
-                (20, 20),
-            ),
-            start_angle = 0,
-            stop_angle  = np.pi / 2,
-            width=LINE_WIDTH
-        )
-        pygame.draw.arc(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 + 1050 - 10 - LINE_WIDTH, 60 - 10),
-                (20, 20),
-            ),
-            start_angle = -np.pi,
-            stop_angle  = -np.pi / 2,
-            width=LINE_WIDTH
-        )
-        pygame.draw.arc(
-            canvas,
-            LINE_WHITE,
-            pygame.Rect(
-                (75 + 1050 - 10 - LINE_WIDTH, 60 + 680 - 10 - LINE_WIDTH),
-                (20, 20),
-            ),
-            start_angle = np.pi / 2,
-            stop_angle  = np.pi,
-            width=LINE_WIDTH
-        )
+        self.field.draw(canvas)
 
         # draw the time
         pygame.draw.rect(
@@ -457,11 +284,9 @@ class SelfTraining_v0(gym.Env):
                            name="action {}".format(key))
             state_y += STATE_ACTION_TEXT_SIZE
 
-
         # draw the ball and the player
         self.player.draw(canvas)
         self.ball.draw(canvas)
-
 
         if self.render_mode == "human":
             # The following line copies our drawings from `canvas` to the visible window
@@ -481,7 +306,7 @@ class SelfTraining_v0(gym.Env):
             rect = surf_dict["rect"]
             self.window.blit(surf, rect)
 
-    def draw_text(self, text, size, font_name=None, x=CENTER.x, y=CENTER.y, color=BLACK, background=TIME_WHITE, 
+    def draw_text(self, text, size, font_name=None, x=0, y=0, color=BLACK, background=TIME_WHITE, 
                   name="text"):
         font_name = pygame.font.get_default_font() if font_name is None else font_name
         font = pygame.font.SysFont(font_name, size)
@@ -489,7 +314,6 @@ class SelfTraining_v0(gym.Env):
         text_rect = text_surface.get_rect()
         text_rect.midtop = (x, y)
         self.text_surfs[name] = {"surf": text_surface, "rect": text_rect}
-
 
     def close(self):
         if self.window is not None:
@@ -503,11 +327,12 @@ class SelfTraining_v1(SelfTraining_v0):
     def __init__(self, render_mode=None, learn_to_kick=False, time_limit=120, randomize_position=False,
                  ball_position=(0, 0), player_position=(-100, 0)):
         super().__init__(render_mode, learn_to_kick, time_limit, randomize_position, ball_position, player_position)
+        self.player_cls = Player_v1
         if randomize_position:
             self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)), can_be_out=True)
             self.player = Player_v1(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
         else:
-            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0), can_be_out=True)
+            self.ball = Ball(Vec2d(*ball_position), Vec2d(0, 0), can_be_out=True)
             self.player = Player_v1(Vec2d(-100, 0))
         if self.learn_to_kick:
             self.ball.position = self.player.position
@@ -542,7 +367,7 @@ class SelfTraining_v1(SelfTraining_v0):
         elif self.ball.out:
             #print("Game terminated. Out.")
             self.terminated = True
-        if self.time >= self.time_limit - FIX_PRECISION:
+        if self.time >= self.time_limit - FIXED_PRECISION:
             #print("Game truncated. Reach time limit.")
             self.truncated = True
 
@@ -561,11 +386,12 @@ class SelfTraining_v2(SelfTraining_v1):
     def __init__(self, render_mode=None, learn_to_kick=False, time_limit=120, randomize_position=False,
                  ball_position=(0, 0), player_position=(-100, 0)):
         super().__init__(render_mode, learn_to_kick, time_limit, randomize_position, ball_position, player_position)
+        self.player_cls = Player_v2
         if randomize_position:
             self.ball = Ball(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)), can_be_out=True)
             self.player = Player_v2(Vec2d(np.random.uniform(-525, 525), np.random.uniform(-340, 340)))
         else:
-            self.ball = Ball(Vec2d(0, 0), Vec2d(0, 0), can_be_out=True)
+            self.ball = Ball(Vec2d(*ball_position), Vec2d(0, 0), can_be_out=True)
             self.player = Player_v2(Vec2d(-100, 0))
         if self.learn_to_kick:
             self.ball.position = self.player.position
@@ -595,6 +421,19 @@ class SelfTraining_v2(SelfTraining_v1):
                 "player_speed": self.player.observe_speed(),
                 "player_direction": self.player.observe_direction(),
                 "player_angular_speed": self.player.observe_angular_speed(),
+               }
+
+    def _get_info(self):
+        return {
+                "ball_position": self.ball.observe_position(),
+                "ball_speed": self.ball.observe_speed(),
+                "player_position": self.player.observe_position(),
+                "player_speed": self.player.observe_speed(),
+                "player_direction": self.player.observe_direction(),
+                "player_angular_speed": self.player.observe_angular_speed(),
+                "distance_to_ball": self.ball.distance_to(self.player.position),
+                "distance_to_goal": self.ball.distance_to_right_goal(),
+                "kicked_ball": self.player.kicked_ball
                }
 
 

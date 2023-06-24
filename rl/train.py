@@ -22,6 +22,7 @@ sys.path.append(os.path.abspath(parent_dir))
 sys.path.append(os.path.join(parent_dir, "football2d_gym"))
 
 import football2d
+from football2d.wrappers import RelativeObservation
 from rl.algorithms.a2c import A2C
 from rl.algorithms.ppo import PPO
 from rl.envs import VectorEnvPyTorchWrapper, PyTorchRecordEpisodeStatistics
@@ -67,6 +68,8 @@ def parse_args():
                         help="randomize env params")
     parser.add_argument("--learn_to_kick", action="store_true",
                         help="player and ball start at the same place")
+    parser.add_argument("--relative_obs", action="store_true",
+                        help="use relative observation")
     parser.add_argument("--time_limit", type=int, default=20,
                         help="time limit of football2d")
     parser.add_argument("--ball_position", type=int, default=[0, 0], nargs="+",
@@ -106,8 +109,8 @@ def parse_args():
                         help="L2 normalization")
     parser.add_argument("--max_grad_norm", type=float, default=0.5,
                         help="clip gradient, max norm of gradient")
-    parser.add_argument("--lr_scheduler", type=str, default="none",
-                        choices=["none", "linear", "cosineannealing"],
+    parser.add_argument("--lr_scheduler", type=str, default="constant",
+                        choices=["constant", "linear", "cosineannealing"],
                         help="Scheduler to change learning rate")
     # ppo
     parser.add_argument("--batch_size", type=int, default=64,
@@ -159,6 +162,9 @@ def main(args):
                            time_limit=args.time_limit,
                            ball_position=args.ball_position,
                            player_position=args.player_position)
+
+    if args.relative_obs and not args.lunarlander:
+        envs = RelativeObservation(envs)
     
     if args.lunarlander:
         args.env_name = "LunarLanderContinuous-v2"
@@ -210,8 +216,11 @@ def main(args):
             return [2, 2, 1]
         else:
             raise KeyError("Unknown action type")
-    args.action_shape = get_action_shape(args.env_name)
-    assert sum(args.action_shape) == envs.single_action_space.shape[0]
+    if args.env_name == "LunarLanderContinuous-v2":
+        args.action_shape = envs.single_action_space.shape[0]
+    else:
+        args.action_shape = get_action_shape(args.env_name)
+        assert sum(args.action_shape) == envs.single_action_space.shape[0]
     
     
     # save model dir
@@ -233,7 +242,8 @@ def main(args):
         torch.save(agent.actor.state_dict(), actor_weights_path)
         torch.save(agent.critic.state_dict(), critic_weights_path)
         torch.save(agent.dist.state_dict(), dist_weights_path)
-        print("Successfully save model in {}".format(dir_name))
+        tqdm.write("Successfully save model in {}".format(dir_name))
+        #print("Successfully save model in {}".format(dir_name))
     
     # init SummaryWriter
     writer_path = os.path.join("logs", args.env_name, args.algorithm, args.name)
@@ -317,6 +327,8 @@ def main(args):
         lr_scheduler_actor = CosineAnnealingLR(agent.actor_optim, T_max=args.n_updates)
         lr_scheduler_critic = CosineAnnealingLR(agent.critic_optim, T_max=args.n_updates)
         lr_scheduler_entropy = CosineAnnealingLR(agent.entropy_optim, T_max=args.n_updates)
+    elif args.lr_scheduler == "constant":
+        pass
     else:
         raise KeyError("Unknown type of Scheduler: {}".format(args.lr_scheduler))
 
@@ -360,7 +372,6 @@ def main(args):
     states, info = envs_wrapper.reset(seed=args.seed)
     memory.states.append(states)
     
-    
     # train the agent
     for update_step in tqdm(range(args.n_updates)):
     
@@ -382,7 +393,7 @@ def main(args):
                 actions
             )
     
-            if "_episode" in infos.keys() and "episode":
+            if "_episode" in infos.keys() and "episode" in infos.keys():
                 if infos["_episode"].any():
                     for ep_ind in np.flatnonzero(infos["_episode"]):
                         episode_rewards.append(infos['episode']['r'][ep_ind])
@@ -432,7 +443,7 @@ def main(args):
             if episode_final_observations[0].__class__.__name__ in ["dict"]:
                 for obs_key in episode_final_observations[0].keys():
                     obs_value = np.concatenate([obs[obs_key][None, :] for obs in episode_final_observations])
-                    obs_value_mean = np.mean(obs_value, axis=0)
+                    obs_value_mean = np.mean(obs_value, axis=0, dtype=np.float32)
                     writer.add_scalar("{}_final_state/{}.x".format(args.env_name, obs_key), obs_value_mean[0], 
                                       update_step)
                     writer.add_scalar("{}_final_state/{}.y".format(args.env_name, obs_key), obs_value_mean[1], 
@@ -445,9 +456,15 @@ def main(args):
         # final info
         if len(episode_final_infos) > 0:
             for info_key in episode_final_infos[0].keys():
-                info_value = [info[info_key] for info in episode_final_infos]
-                info_value_mean = np.mean(info_value)
-                writer.add_scalar("{}_final_info/{}".format(args.env_name, info_key), info_value_mean, update_step)
+                info_value = np.array([info[info_key] for info in episode_final_infos])
+                info_value_mean = np.mean(info_value, axis=0, dtype=np.float32)
+                if type(info_value_mean) is np.ndarray:
+                    writer.add_scalar("{}_final_info/{}.x".format(args.env_name, info_key), info_value_mean[0], 
+                                      update_step)
+                    writer.add_scalar("{}_final_info/{}.y".format(args.env_name, info_key), info_value_mean[1], 
+                                      update_step)
+                elif type(info_value_mean) is np.float32:
+                    writer.add_scalar("{}_final_info/{}".format(args.env_name, info_key), info_value_mean, update_step)
 
         # lr
         if args.model_name in ["world"]:
@@ -483,9 +500,6 @@ def main(args):
             if not os.path.exists(ckp_dir):
                 os.mkdir(ckp_dir)
             save_model(ckp_dir)
-    
-    
-    
     
     save_model(save_dir)
   

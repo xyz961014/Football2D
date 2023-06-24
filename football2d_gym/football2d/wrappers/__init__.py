@@ -1,4 +1,4 @@
 from football2d.wrappers.clip_reward import ClipReward
 from football2d.wrappers.discrete_actions import DiscreteActions
 from football2d.wrappers.reacher_weighted_reward import ReacherRewardWrapper
-from football2d.wrappers.relative_position import RelativePosition
+from football2d.wrappers.relative_observation import RelativeObservation

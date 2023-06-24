@@ -77,9 +77,9 @@ class AuxiliaryRewardManager_SelfTraining_v2(AuxiliaryRewardManager):
 
 def get_auxiliary_reward_manager(env_name, device, reward_type="default"):
     auxiliary_reward_manager_map = {
-            "SelfTraining-v0": AuxiliaryRewardManager_SelfTraining_v0,
-            "SelfTraining-v1": AuxiliaryRewardManager_SelfTraining_v1,
-            "SelfTraining-v2": AuxiliaryRewardManager_SelfTraining_v2
-            }
+        "SelfTraining-v0": AuxiliaryRewardManager_SelfTraining_v0,
+        "SelfTraining-v1": AuxiliaryRewardManager_SelfTraining_v1,
+        "SelfTraining-v2": AuxiliaryRewardManager_SelfTraining_v2
+    }
     auxiliary_reward_manager = auxiliary_reward_manager_map[env_name](device, reward_type)
     return auxiliary_reward_manager

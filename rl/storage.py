@@ -12,9 +12,9 @@ class TrainingMemory(object):
         self.n_steps_per_update = n_steps_per_update
         self.n_envs = n_envs
         self.obs_shape = obs_shape
-        self.n_features = sum(obs_shape)
+        self.n_features = sum(obs_shape) if type(obs_shape) in [tuple, list] else obs_shape
         self.action_shape = action_shape
-        self.n_actions = sum(action_shape)
+        self.n_actions = sum(action_shape) if type(action_shape) in [tuple, list] else action_shape
         self.device = device
 
         self.value_preds = torch.zeros(n_steps_per_update + 1, n_envs, device=self.device)

@@ -2,10 +2,12 @@ import pygame
 import numpy as np
 from pymunk import Vec2d
 import ipdb
+from football2d.envs.colors import (
+    BLACK,
+    YELLOW
+    )
 
 CENTER = Vec2d(600, 400)
-BLACK = (0, 0, 0)
-BALL_YELLOW = (220, 220, 0)
 BALL_SIZE = 8
 BALL_MASS = 0.45
 
@@ -20,15 +22,16 @@ deltaTime = 0.02
 class Ball(object):
     def __init__(self, position: Vec2d, speed: Vec2d=None, mass=BALL_MASS, 
                  resistance_factor_1=RESISTANCE_FACTOR_1, resistance_factor_2=RESISTANCE_FACTOR_2,
-                 can_be_out=False,
+                 can_be_out=False, possession=None,
                  bounce_factor=BOUNCE_FACTOR, goal_bounce_factor=GOAL_BOUNCE_FACTOR,
-                 color=BALL_YELLOW, size=BALL_SIZE):
+                 color=YELLOW, size=BALL_SIZE):
         super().__init__()
         self.position = position
         self.speed = speed if speed is not None else Vec2d.zero()
         self.mass = mass # kg
         
         self.can_be_out = can_be_out
+        self.possession = possession # only used when the ball is out of play
         self.resistance_factor_1 = resistance_factor_1
         self.resistance_factor_2 = resistance_factor_2
         self.bounce_factor = bounce_factor
@@ -43,6 +46,13 @@ class Ball(object):
         self.home_goal, self.away_goal = self.in_the_net()
         self.out = False
         self.rebound_from_player = False
+
+        self.last_touch_player = None
+        self.in_play = False
+        self.is_throw_in = False
+        self.is_restart = True
+        self.possession_range = 91.5
+        self.status = "Start"
 
 
     @property
@@ -154,6 +164,7 @@ class Ball(object):
     def in_the_net(self, position=None):
         if position is None:
             position = self.position
+
         home_goal = False # ball in the right net
         away_goal = False # ball in the left net
         if 1050 / 2 + self.size / 2 < position.x < 1050 / 2 + 35 and -75 / 2 < position.y < 75 / 2:
@@ -171,8 +182,15 @@ class Ball(object):
         fix_x, fix_y = self.fix_position()
 
         home_goal, away_goal = self.in_the_net()
-        self.home_goal = self.home_goal or home_goal
-        self.away_goal = self.away_goal or away_goal
+        self.home_goal = self.home_goal or (home_goal 
+                                            and not self.is_throw_in 
+                                            and not (self.is_restart and self.last_touch_player.side == "away"))
+        self.away_goal = self.away_goal or (away_goal 
+                                            and not self.is_throw_in
+                                            and not (self.is_restart and self.last_touch_player.side == "home"))
+
+        if self.goal:
+            self.status = "Goal"
 
         # rebound from border
         if home_goal or away_goal:
@@ -197,6 +215,40 @@ class Ball(object):
         else:
             self.rebound_from_player = False
 
+        # update in_play
+        if out_of_pitch and self.can_be_out:
+            if not self.goal:
+                self.speed = Vec2d.zero()
+                if out_of_x:
+                    # corner kick / goal kick
+                    if (self.position.x > 0 and self.last_touch_player.side == "home") \
+                    or (self.position.x < 0 and self.last_touch_player.side == "away"):
+                        # goal kick
+                        self.position = Vec2d(470 * np.sign(self.position.x), 90 * np.sign(self.position.y))
+                        self.status = "Goal kick"
+                        self.is_restart = True
+                    elif (self.position.x > 0 and self.last_touch_player.side == "away") \
+                    or (self.position.x < 0 and self.last_touch_player.side == "home"):
+                        # corner kick
+                        self.possession_range = 91.5
+                        self.position = Vec2d(525 * np.sign(self.position.x), 340 * np.sign(self.position.y))
+                        self.status = "Corner kick"
+                        self.is_restart = True
+                elif out_of_y:
+                    # throw-in
+                    self.is_throw_in = True
+                    self.is_restart = True
+                    self.possession_range = 20
+                    self.status = "Throw-in"
+
+            if self.in_play:
+                if self.last_touch_player.side == "home":
+                    self.possession = "away"
+                else:
+                    self.possession = "home"
+            self.in_play = False
+
+
     def rebound_from(self, player):
         d_to_player = (player.position - self.position)
         if d_to_player.length > player.rebound_range:
@@ -212,8 +264,20 @@ class Ball(object):
                 self.speed = self.speed.rotated(np.pi + rebound_angle * 2)
             else:
                 self.speed = self.speed.rotated(-np.pi + rebound_angle * 2)
-            self.speed = (self.speed + player.speed) * self.bounce_factor + player.speed
-            self.rebound_from_player = True
+            new_speed = (self.speed + player.speed) * self.bounce_factor + player.speed
+            if not new_speed == self.speed:
+                self.speed = new_speed
+                self.rebound_from_player = True
+                self.last_touch_player = player
+
+                out_of_pitch, _ = self.out_of_pitch()
+                if not out_of_pitch:
+                    if self.in_play:
+                        self.is_restart = False
+                    self.in_play = True
+                    self.possession = None
+                    self.possession_range = 0
+                    self.status = "In play"
 
 
     def in_rebound_range(self, player):
@@ -224,6 +288,20 @@ class Ball(object):
             return False
 
 
-    def kicked(self, momentum):
+    def kicked(self, momentum, player):
         self.speed = self.speed + momentum / self.mass
+        if momentum.length > 0:
+            # if the ball is kicked
+            self.last_touch_player = player
+            if self.in_play:
+                self.is_restart = False
+            self.in_play = True
+            self.possession = None
+            self.possession_range = 0
+
+            out_of_pitch, _ = self.out_of_pitch()
+            if not out_of_pitch:
+                self.status = "In play"
+            if self.is_throw_in and not out_of_pitch:
+                self.is_throw_in = False
         
