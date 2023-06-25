@@ -91,7 +91,9 @@ elif model_args["algorithm"] == "ppo":
                 model_args["hidden_size"], 
                 model_args["output_activation"],
                 device, 
-                normalize_factor=model_args["normalize_factor"])
+                normalize_factor=model_args["normalize_factor"],
+                encoding_type=model_args["encoding_type"],
+                encoding_size=model_args["encoding_size"])
 
 if model_args["lunarlander"]:
     full_env_name = model_args["env_name"]

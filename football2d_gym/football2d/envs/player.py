@@ -2,6 +2,7 @@ import pygame
 from pymunk import Vec2d
 import numpy as np
 from copy import copy
+from collections import OrderedDict
 import ipdb
 
 from football2d.envs.colors import (
@@ -613,10 +614,10 @@ class Team(object):
         if not self.attacking_right:
             ball_position = -ball_position
             ball_speed = -ball_speed
-        obs = {
+        obs = OrderedDict({
                 "ball_position": ball_position,
                 "ball_speed": ball_speed
-              }
+              })
 
         own_player_positions = []
         own_player_speeds = []

@@ -1,6 +1,7 @@
 import os
 import sys
 import numpy as np
+from copy import copy
 import torch
 import torch.nn as nn
 from torch import optim
@@ -13,11 +14,12 @@ from pathlib import Path
 parent_dir = Path(__file__).absolute().parent.parent.parent
 sys.path.append(os.path.abspath(parent_dir))
 
-from rl.utils import ScaleParameterizedNormal
+from rl.utils import ScaleParameterizedNormal, FourierEncoding
 
 class ActorCritic(nn.Module):
     def __init__(self, model_name, feature_shape, action_shape, hidden_size, output_activation, 
-                       device, init_scale, n_envs, normalize_factor=1.0, dropout=0.0):
+                       device, init_scale, n_envs, normalize_factor=1.0, dropout=0.0, 
+                       encoding_type="none", encoding_size=128):
         super().__init__()
         self.device = device
         self.n_envs = n_envs
@@ -92,7 +94,10 @@ class ActorCritic(nn.Module):
             self.actor = nn.Sequential(*actor_layers)
 
         elif model_name == "world":
-            self.world_encoder = WorldEncoder(feature_shape, hidden_size, dropout)
+            self.world_encoder = WorldEncoder(feature_shape, hidden_size, 
+                                              dropout=dropout,
+                                              encoding_type=encoding_type,
+                                              encoding_size=encoding_size)
             self.critic = nn.Sequential(
                                 nn.Linear(hidden_size, hidden_size),
                                 nn.GELU(),
@@ -199,16 +204,26 @@ class ActorCritic(nn.Module):
 
 
 class WorldEncoder(nn.Module):
-    def __init__(self, feature_shape, hidden_size, dropout=0.0):
+    def __init__(self, feature_shape, hidden_size, dropout=0.0, encoding_type="none", encoding_size=128):
         super().__init__()
+        if encoding_type == "none":
+            encoding_cls = nn.Identity
+            embedding_shape = copy(feature_shape)
+        elif encoding_type == "fourier":
+            encoding_cls = FourierEncoding
+            embedding_shape = [encoding_size + n_feature for n_feature in feature_shape]
+        else:
+            raise NotImplementedError
+
         self.world_encoders = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(n_feature, hidden_size),
+                encoding_cls(n_feature, n_embedding),
+                nn.Linear(n_embedding, hidden_size),
                 nn.GELU(),
                 nn.Dropout(p=dropout),
                 nn.LayerNorm(hidden_size)
             )
-            for n_feature in feature_shape
+            for n_feature, n_embedding in list(zip(feature_shape, embedding_shape))
         ])
         self.world_gather = nn.Sequential(
                 nn.Linear(hidden_size * len(feature_shape), hidden_size),

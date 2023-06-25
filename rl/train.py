@@ -2,7 +2,7 @@ import os
 import sys
 import argparse
 import json
-from collections import deque
+from collections import deque, OrderedDict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,6 +13,7 @@ from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from pprint import pprint
+
 
 import gym
 
@@ -90,6 +91,10 @@ def parse_args():
                         help="dropout p for actor and critic training")
     parser.add_argument("--output_activation", type=str, default="tanh",
                         help="output activation function of the actor")
+    parser.add_argument("--encoding_type", type=str, default="none",
+                        help="encoding type of world model")
+    parser.add_argument("--encoding_size", type=int, default=128,
+                        help="encoding size of world model")
     # agent hyperparams
     parser.add_argument("--gamma", type=float, default=0.999,
                         help="discount factor for reward")
@@ -291,7 +296,9 @@ def main(args):
                     args.n_envs,
                     args.ent_coef,
                     args.max_grad_norm,
-                    normalize_factor=args.normalize_factor
+                    normalize_factor=args.normalize_factor,
+                    encoding_type=args.encoding_type,
+                    encoding_size=args.encoding_size
                     )
     else:
         raise KeyError("algorithm {} not implemented".format(args.algorithm))
@@ -358,7 +365,9 @@ def main(args):
     else:
         auxiliary_reward_manager = None
     # create a wrapper environment to save episode returns and episode lengths
-    envs_wrapper = PyTorchRecordEpisodeStatistics(envs, deque_size=args.n_envs * args.n_updates, device=device,
+    envs_wrapper = PyTorchRecordEpisodeStatistics(envs, 
+                                                  deque_size=args.n_envs * args.n_updates, 
+                                                  device=device,
                                                   auxiliary_reward_manager=auxiliary_reward_manager)
 
     
@@ -372,7 +381,9 @@ def main(args):
     states, info = envs_wrapper.reset(seed=args.seed)
     memory.states.append(states)
     
-    # train the agent
+    ####################################
+    ########## Start training ##########
+    ####################################
     for update_step in tqdm(range(args.n_updates)):
     
         # we don't have to reset the envs, they just continue playing
@@ -440,14 +451,19 @@ def main(args):
                               update_step)
         # final observation
         if len(episode_final_observations) > 0:
-            if episode_final_observations[0].__class__.__name__ in ["dict"]:
+            if type(episode_final_observations[0]) in [dict, OrderedDict]:
                 for obs_key in episode_final_observations[0].keys():
                     obs_value = np.concatenate([obs[obs_key][None, :] for obs in episode_final_observations])
                     obs_value_mean = np.mean(obs_value, axis=0, dtype=np.float32)
-                    writer.add_scalar("{}_final_state/{}.x".format(args.env_name, obs_key), obs_value_mean[0], 
-                                      update_step)
-                    writer.add_scalar("{}_final_state/{}.y".format(args.env_name, obs_key), obs_value_mean[1], 
-                                      update_step)
+                    if obs_value_mean.size == 2:
+                        writer.add_scalar("{}_final_state/{}.x".format(args.env_name, obs_key), obs_value_mean[0], 
+                                          update_step)
+                        writer.add_scalar("{}_final_state/{}.y".format(args.env_name, obs_key), obs_value_mean[1], 
+                                          update_step)
+                    elif obs_value_mean.size == 1:
+                        writer.add_scalar("{}_final_state/{}".format(args.env_name, obs_key), obs_value_mean[0], 
+                                          update_step)
+
             else:
                 obs_value = np.concatenate([obs[None, :] for obs in episode_final_observations])
                 obs_value_mean = np.mean(obs_value, axis=0)
@@ -459,10 +475,14 @@ def main(args):
                 info_value = np.array([info[info_key] for info in episode_final_infos])
                 info_value_mean = np.mean(info_value, axis=0, dtype=np.float32)
                 if type(info_value_mean) is np.ndarray:
-                    writer.add_scalar("{}_final_info/{}.x".format(args.env_name, info_key), info_value_mean[0], 
-                                      update_step)
-                    writer.add_scalar("{}_final_info/{}.y".format(args.env_name, info_key), info_value_mean[1], 
-                                      update_step)
+                    if info_value_mean.size == 2:
+                        writer.add_scalar("{}_final_info/{}.x".format(args.env_name, info_key), info_value_mean[0], 
+                                          update_step)
+                        writer.add_scalar("{}_final_info/{}.y".format(args.env_name, info_key), info_value_mean[1], 
+                                          update_step)
+                    elif info_value_mean.size == 1:
+                        writer.add_scalar("{}_final_info/{}".format(args.env_name, info_key), info_value_mean[0], 
+                                          update_step)
                 elif type(info_value_mean) is np.float32:
                     writer.add_scalar("{}_final_info/{}".format(args.env_name, info_key), info_value_mean, update_step)
 

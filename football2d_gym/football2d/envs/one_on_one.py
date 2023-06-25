@@ -85,18 +85,20 @@ class OneOnOneMatch(gym.Env):
         # Observations are dictionaries with the agent's and the target's location.
         # Each location is encoded as an element of {0, ..., `size`}^2, i.e. MultiDiscrete([size, size]).
         # Each team observes the field as they are attacking rightwards
-        self.observation_space = spaces.Dict({
-            "ball_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
-            "ball_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
-            "own_player_positions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
-            "own_player_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
-            "own_player_directions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
-            "own_player_angular_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 1,), dtype=np.float32),
-            "opponent_player_positions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
-            "opponent_player_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
-            "opponent_player_directions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
-            "opponent_player_angular_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 1,), dtype=np.float32),
-        })
+        self.observation_space = spaces.Dict(
+            OrderedDict({
+                "ball_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+                "ball_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
+                "own_player_positions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
+                "own_player_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
+                "own_player_directions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
+                "own_player_angular_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 1,), dtype=np.float32),
+                "opponent_player_positions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
+                "opponent_player_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
+                "opponent_player_directions": spaces.Box(-np.inf, np.inf, shape=(1, 2,), dtype=np.float32),
+                "opponent_player_angular_speeds": spaces.Box(-np.inf, np.inf, shape=(1, 1,), dtype=np.float32),
+            })
+        )
         #self.observation_space = spaces.Dict(
         #    spaces.Dict({
         #        "home_observation": spaces.Dict({
@@ -165,7 +167,7 @@ class OneOnOneMatch(gym.Env):
         return self.away_team.observe(self.ball, self.home_team)
 
     def _get_info(self):
-        info = {
+        info = OrderedDict({
                 "training_side": self.training_side,
                 "ball_position": self.ball.observe_position(),
                 "ball_speed": self.ball.observe_speed(),
@@ -174,7 +176,7 @@ class OneOnOneMatch(gym.Env):
                 #"is_throw-in": self.ball.is_throw_in,
                 "possession_range": np.array([self.ball.possession_range]),
                 "status": self.ball.status
-               }
+               })
         if self.ball.last_touch_player is not None:
             info["last_touch_player"] = "{} #{}".format(self.ball.last_touch_player.side, 
                                                         self.ball.last_touch_player.number)

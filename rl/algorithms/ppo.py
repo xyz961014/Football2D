@@ -38,10 +38,12 @@ class PPO(ActorCritic):
         max_grad_norm=1.0,
         normalize_factor=1.0,
         dropout=0.0,
+        encoding_type="none",
+        encoding_size=128
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
         super().__init__(model_name, feature_shape, action_shape, hidden_size, output_activation,
-                         device, init_scale, n_envs, normalize_factor, dropout)
+                         device, init_scale, n_envs, normalize_factor, dropout, encoding_type, encoding_size)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
 

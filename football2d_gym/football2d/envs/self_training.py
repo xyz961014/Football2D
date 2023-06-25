@@ -98,15 +98,15 @@ class SelfTraining_v0(gym.Env):
         self.clock = None
 
     def _get_obs(self):
-        return {
+        return OrderedDict({
                 "ball_position": self.ball.observe_position(),
                 "ball_speed": self.ball.observe_speed(),
                 "player_position": self.player.observe_position(),
                 "player_speed": self.player.observe_speed(),
-               }
+               })
 
     def _get_info(self):
-        return {
+        return OrderedDict({
                 "ball_position": self.ball.observe_position(),
                 "ball_speed": self.ball.observe_speed(),
                 "player_position": self.player.observe_position(),
@@ -114,7 +114,7 @@ class SelfTraining_v0(gym.Env):
                 "distance_to_ball": self.ball.distance_to(self.player.position),
                 "distance_to_goal": self.ball.distance_to_right_goal(),
                 "kicked_ball": self.player.kicked_ball
-               }
+               })
 
     def _get_obs_strs(self):
         observation = self._get_obs()
@@ -397,14 +397,14 @@ class SelfTraining_v2(SelfTraining_v1):
             self.ball.position = self.player.position
 
         self.observation_space = spaces.Dict(
-            {
+            OrderedDict({
                 "ball_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "ball_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "player_position": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "player_speed": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "player_direction": spaces.Box(-np.inf, np.inf, shape=(2,), dtype=np.float32),
                 "player_angular_speed": spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
-            }
+            })
         )
 
         # 5 continuous action space
@@ -414,17 +414,17 @@ class SelfTraining_v2(SelfTraining_v1):
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(5, ), dtype=np.float32)
 
     def _get_obs(self):
-        return {
+        return OrderedDict({
                 "ball_position": self.ball.observe_position(),
                 "ball_speed": self.ball.observe_speed(),
                 "player_position": self.player.observe_position(),
                 "player_speed": self.player.observe_speed(),
                 "player_direction": self.player.observe_direction(),
                 "player_angular_speed": self.player.observe_angular_speed(),
-               }
+               })
 
     def _get_info(self):
-        return {
+        return OrderedDict({
                 "ball_position": self.ball.observe_position(),
                 "ball_speed": self.ball.observe_speed(),
                 "player_position": self.player.observe_position(),
@@ -434,6 +434,6 @@ class SelfTraining_v2(SelfTraining_v1):
                 "distance_to_ball": self.ball.distance_to(self.player.position),
                 "distance_to_goal": self.ball.distance_to_right_goal(),
                 "kicked_ball": self.player.kicked_ball
-               }
+               })
 
 
