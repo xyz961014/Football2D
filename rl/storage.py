@@ -6,10 +6,10 @@ from collections import deque, OrderedDict
 import ipdb
 
 class TrainingMemory(object):
-    def __init__(self, n_steps_per_update, n_envs, obs_shape, action_shape, device):
+    def __init__(self, memory_size, n_envs, obs_shape, action_shape, device):
         super().__init__()
 
-        self.n_steps_per_update = n_steps_per_update
+        self.memory_size = memory_size
         self.n_envs = n_envs
         self.obs_shape = obs_shape
         self.n_features = sum(obs_shape) if type(obs_shape) in [tuple, list] else obs_shape
@@ -17,12 +17,12 @@ class TrainingMemory(object):
         self.n_actions = sum(action_shape) if type(action_shape) in [tuple, list] else action_shape
         self.device = device
 
-        self.value_preds = torch.zeros(n_steps_per_update + 1, n_envs, device=self.device)
-        self.rewards = torch.zeros(n_steps_per_update, n_envs, device=self.device)
-        self.action_log_probs = torch.zeros(n_steps_per_update, n_envs, device=self.device)
-        self.masks = torch.ones(n_steps_per_update, n_envs, device=self.device)
-        self.actions = torch.zeros(n_steps_per_update, n_envs, self.n_actions, device=self.device)
-        self.states = deque(maxlen=n_steps_per_update + 1)
+        self.value_preds = torch.zeros(memory_size + 1, n_envs, device=self.device)
+        self.rewards = torch.zeros(memory_size, n_envs, device=self.device)
+        self.action_log_probs = torch.zeros(memory_size, n_envs, device=self.device)
+        self.masks = torch.ones(memory_size, n_envs, device=self.device)
+        self.actions = torch.zeros(memory_size, n_envs, self.n_actions, device=self.device)
+        self.states = deque(maxlen=memory_size + 1)
 
         #self.returns = torch.zeros(num_steps + 1, num_processes, 1)
 
@@ -45,7 +45,7 @@ class TrainingMemory(object):
                       if states.__class__.__name__ in ["dict", "OrderedDict"] else states 
                       for states in list(self.states)[:-1]]
             states = torch.cat(states)
-            return states.reshape(self.n_steps_per_update, self.n_envs, self.n_features)
+            return states.reshape(self.memory_size, self.n_envs, self.n_features)
 
     def insert(self, states, actions, action_log_probs, state_value_preds, rewards, masks):
 
@@ -57,17 +57,17 @@ class TrainingMemory(object):
         self.action_log_probs[self.step] = action_log_probs
         self.masks[self.step] = masks
 
-        self.step = (self.step + 1) % self.n_steps_per_update
+        self.step = (self.step + 1) % self.memory_size
 
     def after_update(self):
         final_state = self.states[-1]
         
         self.states.clear()
-        self.actions = torch.zeros(self.n_steps_per_update, self.n_envs, self.n_actions, device=self.device)
-        self.value_preds = torch.zeros(self.n_steps_per_update + 1, self.n_envs, device=self.device)
-        self.rewards = torch.zeros(self.n_steps_per_update, self.n_envs, device=self.device)
-        self.action_log_probs = torch.zeros(self.n_steps_per_update, self.n_envs, device=self.device)
-        self.masks = torch.ones(self.n_steps_per_update, self.n_envs, device=self.device)
+        self.actions = torch.zeros(self.memory_size, self.n_envs, self.n_actions, device=self.device)
+        self.value_preds = torch.zeros(self.memory_size + 1, self.n_envs, device=self.device)
+        self.rewards = torch.zeros(self.memory_size, self.n_envs, device=self.device)
+        self.action_log_probs = torch.zeros(self.memory_size, self.n_envs, device=self.device)
+        self.masks = torch.ones(self.memory_size, self.n_envs, device=self.device)
 
         self.states.append(final_state)
 
@@ -92,7 +92,7 @@ class TrainingMemory(object):
 
     def get_ppo_data_generator(self, batch_size, advantages=None, keep_state_dict=False):
 
-        sample_size = self.n_envs * self.n_steps_per_update
+        sample_size = self.n_envs * (len(self.states) - 1)
         assert batch_size <= sample_size
         sampler = BatchSampler(SubsetRandomSampler(range(sample_size)), batch_size, drop_last=True)
 

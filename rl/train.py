@@ -117,6 +117,8 @@ def parse_args():
     parser.add_argument("--lr_scheduler", type=str, default="constant",
                         choices=["constant", "linear", "cosineannealing"],
                         help="Scheduler to change learning rate")
+    parser.add_argument("--decision_interval", type=int, default=1,
+                        help="make decisions every n steps")
     # ppo
     parser.add_argument("--batch_size", type=int, default=64,
                         help="batch size in ppo")
@@ -376,7 +378,8 @@ def main(args):
     episode_final_observations = deque(maxlen=args.n_envs)
     episode_final_infos = deque(maxlen=args.n_envs)
     
-    memory = TrainingMemory(args.n_steps_per_update, args.n_envs, args.obs_shape, args.action_shape, device)
+    memory = TrainingMemory(args.n_steps_per_update // args.decision_interval, 
+                            args.n_envs, args.obs_shape, args.action_shape, device)
     
     states, info = envs_wrapper.reset(seed=args.seed)
     memory.states.append(states)
@@ -395,14 +398,24 @@ def main(args):
         for step in range(args.n_steps_per_update):
     
             # select an action A_{t} using S_{t} as input for the agent
-            with torch.no_grad():
-                actions, action_log_probs, state_value_preds, entropy = agent.select_action(
-                    states
-                )
+            if step % args.decision_interval == 0:
+                with torch.no_grad():
+                    actions, action_log_probs, state_value_preds, entropy = agent.select_action(
+                        states
+                    )
+
             # perform the action A_{t} in the environment to get S_{t+1} and R_{t+1}
             states, rewards, terminated, truncated, infos = envs_wrapper.step(
                 actions
             )
+            if step % args.decision_interval == 0:
+                interval_rewards = rewards
+                interval_terminated = terminated
+                interval_truncated = truncated
+            else:
+                interval_rewards += rewards
+                interval_terminated = [t1 or t2 for t1, t2 in list(zip(interval_terminated, terminated))]
+                interval_truncated = [t1 or t2 for t1, t2 in list(zip(interval_truncated, truncated))]
     
             if "_episode" in infos.keys() and "episode" in infos.keys():
                 if infos["_episode"].any():
@@ -415,10 +428,9 @@ def main(args):
             # add a mask (for the return calculation later);
             # for each env the mask is 1 if the episode is ongoing and 0 if it is terminated (not by truncation!)
     
-            #masks[step] = torch.tensor([not term for term in terminated])
-            masks = torch.cat([term.unsqueeze(0) for term in terminated]).eq(0).float().to(device)
-    
-            memory.insert(states, actions, action_log_probs, state_value_preds, rewards, masks)
+            if step % args.decision_interval == args.decision_interval - 1:
+                masks = torch.cat([term.unsqueeze(0) for term in interval_terminated]).eq(0).float().to(device)
+                memory.insert(states, actions, action_log_probs, state_value_preds, interval_rewards, masks)
     
         # get next value V(s_{t+1})
         with torch.no_grad():
