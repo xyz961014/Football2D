@@ -47,7 +47,7 @@ class OneOnOneMatch(gym.Env):
         self.time_limit = time_limit
         self.duration = duration
         self.window_width = 1200  # The size of the PyGame window
-        self.window_height = 900  # The size of the PyGame window
+        self.window_height = 1000  # The size of the PyGame window
         self.celebration_time = celebration_time
 
         self.ball_position = ball_position
@@ -317,10 +317,10 @@ class OneOnOneMatch(gym.Env):
                 home_action[0, 0] = -1.
             if keys[pygame.K_w]:
                 # Move up
-                home_action[0, 1] = -1.
+                home_action[0, 1] = 1.
             if keys[pygame.K_s]:
                 # Move down
-                home_action[0, 1] = 1.
+                home_action[0, 1] = -1.
             if keys[pygame.K_q]:
                 # Rotate counterclockwise
                 home_action[0, 4] = -1.
@@ -330,16 +330,16 @@ class OneOnOneMatch(gym.Env):
 
             if keys[pygame.K_t]:
                 # Kick forward
-                home_action[0, 2:4] = 1. * self.home_team.players[0].direction
+                home_action[0, 3] = 1.
             if keys[pygame.K_g]:
                 # Kick backward
-                home_action[0, 2:4] = -1. * self.home_team.players[0].direction
+                home_action[0, 3] = -1.
             if keys[pygame.K_f]:
                 # Kick leftward
-                home_action[0, 2:4] = 1. * self.home_team.players[0].direction.rotated(0.5 * np.pi)
+                home_action[0, 2] = -1.
             if keys[pygame.K_h]:
                 # Kick rightward
-                home_action[0, 2:4] = -1. * self.home_team.players[0].direction.rotated(-0.5 * np.pi)
+                home_action[0, 2] = 1.
 
             ##### Away player control #####
             if keys[pygame.K_KP6]:
@@ -350,10 +350,10 @@ class OneOnOneMatch(gym.Env):
                 away_action[0, 0] = 1.
             if keys[pygame.K_KP8]:
                 # Move up
-                away_action[0, 1] = 1.
+                away_action[0, 1] = -1.
             if keys[pygame.K_KP5]:
                 # Move down
-                away_action[0, 1] = -1.
+                away_action[0, 1] = 1.
             if keys[pygame.K_KP7]:
                 # Rotate counterclockwise
                 away_action[0, 4] = -1.
@@ -363,16 +363,16 @@ class OneOnOneMatch(gym.Env):
 
             if keys[pygame.K_UP]:
                 # Kick forward
-                away_action[0, 2:4] = -1. * self.away_team.players[0].direction
+                away_action[0, 3] = -1.
             if keys[pygame.K_DOWN]:
                 # Kick backward
-                away_action[0, 2:4] = 1. * self.away_team.players[0].direction
+                away_action[0, 3] = 1.
             if keys[pygame.K_LEFT]:
                 # Kick leftward
-                away_action[0, 2:4] = -1. * self.away_team.players[0].direction.rotated(0.5 * np.pi)
+                away_action[0, 2] = 1.
             if keys[pygame.K_RIGHT]:
                 # Kick rightward
-                away_action[0, 2:4] = 1. * self.away_team.players[0].direction.rotated(-0.5 * np.pi)
+                away_action[0, 2] = -1.
 
 
         self.time += timeDelta
@@ -549,7 +549,7 @@ class OneOnOneMatch(gym.Env):
         # print info and action
         info_strs, home_info_strs, away_info_strs = self._get_info_strs()
         home_action_strs, away_action_strs = self._get_action_strs()
-        info_x = 200
+        info_x = 180
         info_y = 760
         for key, info_str in info_strs.items():
             self.draw_text(info_str, 
@@ -559,7 +559,7 @@ class OneOnOneMatch(gym.Env):
                            name="info {}".format(key))
             info_y += STATE_ACTION_TEXT_SIZE
         # home team
-        info_x = 560
+        info_x = 540
         info_y = 760
         self.draw_text("Home players", 
                        STATE_ACTION_TEXT_SIZE + 3, 
@@ -582,7 +582,7 @@ class OneOnOneMatch(gym.Env):
                            name="home_action {}".format(key))
             info_y += STATE_ACTION_TEXT_SIZE
         # away team
-        info_x = 1000
+        info_x = 980
         info_y = 760
         self.draw_text("Away players", 
                        STATE_ACTION_TEXT_SIZE + 3, 

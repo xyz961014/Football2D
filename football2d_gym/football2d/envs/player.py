@@ -435,26 +435,36 @@ class Player_v2(Player_v1):
     def get_action_strs(self):
         action = self.action if self.action is not None else np.zeros(5)
         action_strs = {}
-        action_strs["acceleration"]  = "{:20}: ({:8.2f}, {:8.2f})".format("Acceleration", 
+        action_strs["acceleration"]  = "{:25}: ({:8.2f}, {:8.2f})".format("Acceleration", 
                                                                           action[0], action[1])
-        action_strs["kick_momentum"] = "{:20}: ({:8.2f}, {:8.2f})".format("Kick momentum", 
+        action_strs["kick_momentum"] = "{:25}: ({:8.2f}, {:8.2f})".format("Kick momentum", 
                                                                           action[2], action[3])
-        action_strs["angular_acc"]   = "{:20}: {:9.2f}           ".format("Angular acceleration", 
+        action_strs["angular_acc"]   = "{:25}: {:9.2f}           ".format("Angular acceleration", 
                                                                           action[4])
+        action_strs["last_kick_momentum"] = "{:25}: ({:8.4f}, {:8.4f})".format("Last kick momentum", 
+                                                                               *self.last_kick_momentum)
+        action_strs["last_kick_momentum_value"] = "{:25}: {:9.4f}           ".format(
+                "Last kick momentum value", 
+                self.last_kick_momentum.length)
         return action_strs
 
     def act(self, action, ball):
         self.action = action
 
-        heading_factor_move = (1 - Vec2d.dot(self.direction.normalized(), self.speed.normalized())) / 2 # 0-1 value
-        move_acceleration = Vec2d(*action[0:2] * self.max_acceleration)
+        direction = self.direction.normalized()
+        heading_factor_move = (1 - Vec2d.dot(direction, self.speed.normalized())) / 2 # 0-1 value
+
+        move_acceleration = Vec2d(direction[0] * action[1] - direction[1] * action[0],
+                                  direction[0] * action[0] + direction[1] * action[1]) * self.max_acceleration
         max_acceleration = self.max_acceleration \
                            - heading_factor_move * (self.max_acceleration - self.max_backward_acceleration)
         if move_acceleration.length > max_acceleration:
             move_acceleration = move_acceleration.normalized() * max_acceleration
         self.acceleration = move_acceleration
 
-        kick_momentum = Vec2d(*action[2:4] * self.max_momentum)
+        kick_momentum = Vec2d(direction[0] * action[3] - direction[1] * action[2],
+                              direction[0] * action[2] + direction[1] * action[3]) * self.max_momentum
+        #kick_momentum = Vec2d(*action[2:4] * self.max_momentum)
         if kick_momentum.length > self.max_momentum:
             kick_momentum = kick_momentum.normalized() * self.max_momentum
 

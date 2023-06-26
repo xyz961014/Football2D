@@ -378,7 +378,7 @@ def main(args):
     episode_final_observations = deque(maxlen=args.n_envs)
     episode_final_infos = deque(maxlen=args.n_envs)
     
-    memory = TrainingMemory(args.n_steps_per_update // args.decision_interval, 
+    memory = TrainingMemory(args.n_steps_per_update, 
                             args.n_envs, args.obs_shape, args.action_shape, device)
     
     states, info = envs_wrapper.reset(seed=args.seed)
@@ -408,14 +408,6 @@ def main(args):
             states, rewards, terminated, truncated, infos = envs_wrapper.step(
                 actions
             )
-            if step % args.decision_interval == 0:
-                interval_rewards = rewards
-                interval_terminated = terminated
-                interval_truncated = truncated
-            else:
-                interval_rewards += rewards
-                interval_terminated = [t1 or t2 for t1, t2 in list(zip(interval_terminated, terminated))]
-                interval_truncated = [t1 or t2 for t1, t2 in list(zip(interval_truncated, truncated))]
     
             if "_episode" in infos.keys() and "episode" in infos.keys():
                 if infos["_episode"].any():
@@ -428,9 +420,8 @@ def main(args):
             # add a mask (for the return calculation later);
             # for each env the mask is 1 if the episode is ongoing and 0 if it is terminated (not by truncation!)
     
-            if step % args.decision_interval == args.decision_interval - 1:
-                masks = torch.cat([term.unsqueeze(0) for term in interval_terminated]).eq(0).float().to(device)
-                memory.insert(states, actions, action_log_probs, state_value_preds, interval_rewards, masks)
+            masks = torch.cat([term.unsqueeze(0) for term in terminated]).eq(0).float().to(device)
+            memory.insert(states, actions, action_log_probs, state_value_preds, rewards, masks)
     
         # get next value V(s_{t+1})
         with torch.no_grad():
