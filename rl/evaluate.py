@@ -2,6 +2,7 @@ import sys
 import os
 import argparse
 import json
+from collections import deque
 
 import numpy as np
 import torch
@@ -17,6 +18,7 @@ sys.path.append(os.path.join(curr_path, ".."))
 sys.path.append(os.path.join(curr_path, "..", "football2d_gym"))
 
 import football2d
+import rl.utils as utils
 from rl.algorithms.a2c import A2C
 from rl.algorithms.ppo import PPO
 from rl.envs import EnvPyTorchWrapper
@@ -93,7 +95,9 @@ elif model_args["algorithm"] == "ppo":
                 device, 
                 normalize_factor=model_args["normalize_factor"],
                 encoding_type=model_args["encoding_type"],
-                encoding_size=model_args["encoding_size"])
+                encoding_size=model_args["encoding_size"],
+                #use_goal_state=model_args["use_goal_state"]
+                )
 
 if model_args["lunarlander"]:
     full_env_name = model_args["env_name"]
@@ -172,8 +176,15 @@ for episode in range(args.n_episodes):
 
     env = EnvPyTorchWrapper(env, device)
 
+
     # get an initial state
     state, info = env.reset()
+
+    states_buffer = deque(maxlen=model_args["multi_step_states"])
+    for _ in range(model_args["multi_step_states"]):
+        states_buffer.append(utils.zeros_like_dict_tensor(utils.unsqueeze_dict_tensor(state, 0)))
+    states_buffer.append(utils.unsqueeze_dict_tensor(state, 0))
+    agent_state = utils.concat_dict_tensors(states_buffer, dim=1)
 
     # play one episode
     done = False
@@ -183,10 +194,14 @@ for episode in range(args.n_episodes):
 
         # select an action A_{t} using S_{t} as input for the agent
         with torch.no_grad():
-            action, _, _, _ = agent.select_action(state)
+            action, _, _, _ = agent.select_action(agent_state)
 
         # perform the action A_{t} in the environment to get S_{t+1} and R_{t+1}
         state, reward, terminated, truncated, info = env.step(action.squeeze())
+
+        states_buffer.append(utils.unsqueeze_dict_tensor(state, 0))
+        agent_state = utils.concat_dict_tensors(states_buffer, dim=1)
+
         if args.show_auxiliary_reward:
             auxiliary_reward = auxiliary_reward_manager(info)
             reward += auxiliary_reward

@@ -24,6 +24,7 @@ sys.path.append(os.path.join(parent_dir, "football2d_gym"))
 
 import football2d
 from football2d.wrappers import RelativeObservation
+import rl.utils as utils
 from rl.algorithms.a2c import A2C
 from rl.algorithms.ppo import PPO
 from rl.envs import VectorEnvPyTorchWrapper, PyTorchRecordEpisodeStatistics
@@ -79,7 +80,7 @@ def parse_args():
                         help="player position of football2d")
     # actor-critic model
     parser.add_argument("--model_name", type=str, default="basic",
-                        choices=["basic", "basic_wo_dropout", "world"],
+                        choices=["basic", "basic_wo_dropout", "world", "world_gpt"],
                         help="model type to choose for actor critic")
     parser.add_argument("--hidden_size", type=int, default=128,
                         help="hidden size of actor and critic")
@@ -119,6 +120,20 @@ def parse_args():
                         help="Scheduler to change learning rate")
     parser.add_argument("--decision_interval", type=int, default=1,
                         help="make decisions every n steps")
+    parser.add_argument("--multi_step_states", type=int, default=1,
+                        help="concatenate n recent states as the step state")
+    parser.add_argument("--use_goal_state", action="store_true",
+                        help="add the position of the goal into states")
+    # her
+    parser.add_argument("--use_her", action="store_true",
+                        help="use hindsight experience replay")
+    parser.add_argument("--her_k_goals", type=int, default=4,
+                        help="sample k goals in HER, her_strategy future")
+    parser.add_argument("--her_tolerance", type=float, default=25.0,
+                        help="position tolerance in HER")
+    parser.add_argument("--her_strategy", type=str, default="future",
+                        choices=["future", "final"],
+                        help="HER sampling strategy")
     # ppo
     parser.add_argument("--batch_size", type=int, default=64,
                         help="batch size in ppo")
@@ -207,6 +222,12 @@ def main(args):
     else:
         args.obs_shape = envs.single_observation_space.shape[0]
 
+    if args.multi_step_states > 1:
+        args.obs_shape = [shape * args.multi_step_states for shape in args.obs_shape]
+
+    if args.use_goal_state:
+        args.obs_shape.append(2)
+
     #if envs.single_action_space.__class__.__name__ == "Dict":
     #    args.action_shape = [action_box.shape[0] for key, action_box in envs.single_action_space.items()]
     #else:
@@ -237,14 +258,14 @@ def main(args):
     
     def save_model(dir_name):
         hyperparams_path = os.path.join(dir_name, "hyperparams.json")
-        if args.model_name in ["world"]:
+        if args.model_name in ["world", "world_gpt"]:
             world_weights_path = os.path.join(dir_name, "world_weights.pt")
         actor_weights_path = os.path.join(dir_name, "actor_weights.pt")
         critic_weights_path = os.path.join(dir_name, "critic_weights.pt")
         dist_weights_path = os.path.join(dir_name, "training_dist_weights.pt")
         
         json.dump(args.__dict__, open(hyperparams_path, "w"), indent=4)
-        if args.model_name in ["world"]:
+        if args.model_name in ["world", "world_gpt"]:
             torch.save(agent.world_encoder.state_dict(), world_weights_path)
         torch.save(agent.actor.state_dict(), actor_weights_path)
         torch.save(agent.critic.state_dict(), critic_weights_path)
@@ -300,12 +321,13 @@ def main(args):
                     args.max_grad_norm,
                     normalize_factor=args.normalize_factor,
                     encoding_type=args.encoding_type,
-                    encoding_size=args.encoding_size
+                    encoding_size=args.encoding_size,
+                    use_goal_state=args.use_goal_state
                     )
     else:
         raise KeyError("algorithm {} not implemented".format(args.algorithm))
 
-    if args.model_name in ["world"]:
+    if args.model_name in ["world", "world_gpt"]:
         if args.only_train_move:
             agent.actor.sub_actors[1].requires_grad_(False)
             #agent.actor.sub_actors[1][-2].weight.zero_()
@@ -321,7 +343,7 @@ def main(args):
     lr_scheduler_critic = None
     lr_scheduler_entropy = None
     if args.lr_scheduler == "linear":
-        if args.model_name in ["world"]:
+        if args.model_name in ["world", "world_gpt"]:
             lr_scheduler_world = LinearLR(agent.world_optim, start_factor=1.0, end_factor=0.0, 
                                           total_iters=args.n_updates)
         lr_scheduler_actor = LinearLR(agent.actor_optim, start_factor=1.0, end_factor=0.0, 
@@ -331,7 +353,7 @@ def main(args):
         lr_scheduler_entropy = LinearLR(agent.entropy_optim, start_factor=1.0, end_factor=0.0, 
                                         total_iters=args.n_updates)
     elif args.lr_scheduler == "cosineannealing":
-        if args.model_name in ["world"]:
+        if args.model_name in ["world", "world_gpt"]:
             lr_scheduler_world = CosineAnnealingLR(agent.world_optim, T_max=args.n_updates)
         lr_scheduler_actor = CosineAnnealingLR(agent.actor_optim, T_max=args.n_updates)
         lr_scheduler_critic = CosineAnnealingLR(agent.critic_optim, T_max=args.n_updates)
@@ -353,7 +375,7 @@ def main(args):
         model_args = json.load(open(hyperparams_path, "r"))
         assert args.algorithm == model_args["algorithm"]
         assert args.model_name == model_args["model_name"]
-        if args.model_name in ["world"]:
+        if args.model_name in ["world", "world_gpt"]:
             agent.world_encoder.load_state_dict(torch.load(world_weights_path))
         agent.actor.load_state_dict(torch.load(actor_weights_path))
         agent.critic.load_state_dict(torch.load(critic_weights_path))
@@ -381,8 +403,15 @@ def main(args):
     memory = TrainingMemory(args.n_steps_per_update, 
                             args.n_envs, args.obs_shape, args.action_shape, device)
     
+    states_buffer = deque(maxlen=args.multi_step_states)
+    
     states, info = envs_wrapper.reset(seed=args.seed)
-    memory.states.append(states)
+
+    for _ in range(args.multi_step_states):
+        states_buffer.append(utils.zeros_like_dict_tensor(states))
+    states_buffer.append(states)
+    agent_states = utils.concat_dict_tensors(states_buffer, dim=1)
+    memory.states.append(agent_states)
     
     ####################################
     ########## Start training ##########
@@ -401,13 +430,15 @@ def main(args):
             if step % args.decision_interval == 0:
                 with torch.no_grad():
                     actions, action_log_probs, state_value_preds, entropy = agent.select_action(
-                        states
+                        agent_states
                     )
 
             # perform the action A_{t} in the environment to get S_{t+1} and R_{t+1}
             states, rewards, terminated, truncated, infos = envs_wrapper.step(
                 actions
             )
+            states_buffer.append(states)
+            agent_states = utils.concat_dict_tensors(states_buffer, dim=1)
     
             if "_episode" in infos.keys() and "episode" in infos.keys():
                 if infos["_episode"].any():
@@ -421,11 +452,25 @@ def main(args):
             # for each env the mask is 1 if the episode is ongoing and 0 if it is terminated (not by truncation!)
     
             masks = torch.cat([term.unsqueeze(0) for term in terminated]).eq(0).float().to(device)
-            memory.insert(states, actions, action_log_probs, state_value_preds, rewards, masks)
+            memory.insert(agent_states, actions, action_log_probs, state_value_preds, rewards, masks)
     
+        if args.use_her:
+            ##### HER #####
+            # sample additional goals
+            states_with_new_goals = memory.her_sample_new_goals(args.her_k_goals, strategy=args.her_strategy)
+            # compute new action_log_probs, state_value_preds and rewards
+            her_action_log_probs, her_state_value_preds, her_rewards = memory.her_evaluate_transitions(
+                states_with_new_goals,
+                agent=agent,
+                tolerance=args.her_tolerance,
+                batch_size=args.batch_size
+            )
+            # store HER data in memory
+            memory.her_insert(states_with_new_goals, her_action_log_probs, her_state_value_preds, her_rewards)
+
         # get next value V(s_{t+1})
         with torch.no_grad():
-            next_state_value, _ = agent.forward(states)
+            next_state_value, _ = agent.forward(memory.states[-1])
             next_state_value = next_state_value.squeeze().detach()
     
         # calculate the losses for actor and critic
@@ -435,7 +480,7 @@ def main(args):
         critic_loss, actor_loss, entropy = agent.update_parameters(memory)
 
         # clear memory
-        memory.after_update()
+        memory.after_update(agent_states)
 
         ##############################################
         # Start of Tensorboard logging
@@ -490,7 +535,7 @@ def main(args):
                     writer.add_scalar("{}_final_info/{}".format(args.env_name, info_key), info_value_mean, update_step)
 
         # lr
-        if args.model_name in ["world"]:
+        if args.model_name in ["world", "world_gpt"]:
             writer.add_scalar("optimizer/world_lr", agent.world_optim.param_groups[0]["lr"], update_step)
         writer.add_scalar("optimizer/actor_lr", agent.actor_optim.param_groups[0]["lr"], update_step)
         writer.add_scalar("optimizer/critic_lr", agent.critic_optim.param_groups[0]["lr"], update_step)

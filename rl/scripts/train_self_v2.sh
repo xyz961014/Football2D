@@ -23,4 +23,6 @@ python train.py \
     --auxiliary_reward_type no_kick_reward \
     --use_cuda \
     --learn_to_kick \
+    --relative_obs \
+    --encoding_type fourier \
     ${@:1}

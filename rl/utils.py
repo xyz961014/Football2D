@@ -44,6 +44,83 @@ class FourierEncoding(nn.Module):
         return encodings
 
 
+def concat_dict_tensors(dict_tensors, dim=0):
+    assert len(dict_tensors) > 0
+    # Get keys from the first dictionary in the list
+    keys = list(dict_tensors[0].keys())
+    
+    # Initialize the output dictionary
+    output_dict = {}
+    
+    # Concatenate tensors for each key
+    for key in keys:
+        # Get the tensors for the current key from all dictionaries
+        tensors = [dict_tensor[key] for dict_tensor in dict_tensors]
+
+        # Concatenate the tensors along the specified dimension
+        concat_tensor = torch.cat(tensors, dim=dim)
+        
+        # Assign the concatenated tensor to the output dictionary
+        output_dict[key] = concat_tensor
+    
+    return output_dict
+
+
+def zeros_like_dict_tensor(dict_tensor):
+    # Initialize the output dictionary
+    output_dict = {}
+    
+    # Iterate over the input dictionary
+    for key, tensor in dict_tensor.items():
+        # Create a new tensor of zeros with the same shape as the input tensor
+        zeros_tensor = torch.zeros_like(tensor)
+        
+        # Assign the zeros tensor to the output dictionary
+        output_dict[key] = zeros_tensor
+    
+    return output_dict
+
+def unsqueeze_dict_tensor(dict_tensor, dim):
+    # Initialize the output dictionary
+    output_dict = {}
+
+    # Iterate over the input dictionary
+    for key, tensor in dict_tensor.items():
+        unsqueezed_tensor = tensor.unsqueeze(dim)
+        output_dict[key] = unsqueezed_tensor
+    
+    return output_dict
+
+
+def clone_dict_tensor(dict_tensor):
+    # Initialize the output dictionary
+    output_dict = {}
+
+    # Iterate over the input dictionary
+    for key, tensor in dict_tensor.items():
+        cloned_tensor = tensor.detach().clone()
+        output_dict[key] = cloned_tensor
+    
+    return output_dict
+
+
+def chunk_dict_tensor(dict_tensor, num_chunks, dim=0):
+    # Create an empty dictionary to store the chunked tensors
+    chunked_dict_tensors = {}
+
+    # Iterate over the keys and values in the input dictionary
+    for key, tensor in dict_tensor.items():
+        # Chunk the tensor
+        chunks = torch.chunk(tensor, num_chunks, dim=0)
+
+        # Store the list of chunked tensors in the output dictionary
+        for i, chunk in enumerate(chunks):
+            if not i in chunked_dict_tensors.keys():
+                chunked_dict_tensors[i] = {}
+            chunked_dict_tensors[i][key] = chunk
+
+    return list(chunked_dict_tensors.values())
+
 if __name__ == "__main__":
     # Example usage
     input_dim = 2

@@ -39,11 +39,14 @@ class PPO(ActorCritic):
         normalize_factor=1.0,
         dropout=0.0,
         encoding_type="none",
-        encoding_size=128
+        encoding_size=128,
+        use_goal_state=False,
+        goal_position=(550.0, 0.0)
     ) -> None:
         """Initializes the actor and critic networks and their respective optimizers."""
         super().__init__(model_name, feature_shape, action_shape, hidden_size, output_activation,
-                         device, init_scale, n_envs, normalize_factor, dropout, encoding_type, encoding_size)
+                         device, init_scale, n_envs, normalize_factor, dropout, encoding_type, encoding_size,
+                         use_goal_state, goal_position)
         self.ent_coef = ent_coef
         self.max_grad_norm = max_grad_norm
 
@@ -52,13 +55,13 @@ class PPO(ActorCritic):
         self.clip_param = clip_param
 
         # define optimizers for actor and critic
-        if self.model_name in ["world"]:
+        if self.model_name in ["world", "world_gpt"]:
             self.world_params = list(self.world_encoder.parameters())
         self.critic_params = list(self.critic.parameters())
         self.actor_params = list(self.actor.parameters())
         self.entropy_params = list(self.dist.parameters())
 
-        if self.model_name in ["world"]:
+        if self.model_name in ["world", "world_gpt"]:
             self.world_optim = optim.Adam(self.world_params, lr=world_lr, weight_decay=weight_decay)
         self.critic_optim = optim.Adam(self.critic_params, lr=critic_lr, weight_decay=weight_decay)
         self.actor_optim = optim.Adam(self.actor_params, lr=actor_lr, weight_decay=weight_decay)
@@ -94,7 +97,7 @@ class PPO(ActorCritic):
         critic_losses = []
         actor_losses = []
         entropies = []
-        if self.model_name in ["world"]:
+        if self.model_name in ["world", "world_gpt"]:
             keep_state_dict = True
         else:
             keep_state_dict = False
@@ -107,7 +110,7 @@ class PPO(ActorCritic):
                 critic_loss, actor_loss, entropy = self.get_losses(*sample)
                 total_loss = critic_loss + actor_loss - self.ent_coef * entropy
 
-                if self.model_name in ["world"]:
+                if self.model_name in ["world", "world_gpt"]:
                     self.world_optim.zero_grad()
                 self.critic_optim.zero_grad()
                 self.actor_optim.zero_grad()
@@ -115,13 +118,13 @@ class PPO(ActorCritic):
 
                 total_loss.backward()
 
-                if self.model_name in ["world"]:
+                if self.model_name in ["world", "world_gpt"]:
                     nn.utils.clip_grad_norm_(self.world_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
                 nn.utils.clip_grad_norm_(self.entropy_params, self.max_grad_norm)
 
-                if self.model_name in ["world"]:
+                if self.model_name in ["world", "world_gpt"]:
                     self.world_optim.step()
                 self.critic_optim.step()
                 self.actor_optim.step()

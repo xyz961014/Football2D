@@ -30,6 +30,8 @@ class AuxiliaryRewardManager_SelfTraining_v0(AuxiliaryRewardManager):
         elif self.reward_type == "no_kick_reward":
             # reward of player being close to the ball and ball being close to the goal
             aux_rewards = -infos["distance_to_ball"] * 5e-8 - infos["distance_to_goal"] * 1e-7
+        elif self.reward_type == "none":
+            aux_rewards = 0.0
         else:
             raise NotImplementedError
 
@@ -55,6 +57,8 @@ class AuxiliaryRewardManager_SelfTraining_v1(AuxiliaryRewardManager):
         elif self.reward_type == "no_kick_reward":
             # reward of player being close to the ball and ball being close to the goal
             aux_rewards = -infos["distance_to_ball"] * 5e-8 - infos["distance_to_goal"] * 1e-7
+        elif self.reward_type == "none":
+            aux_rewards = 0.0
         else:
             raise NotImplementedError
 
@@ -81,6 +85,8 @@ class AuxiliaryRewardManager_SelfTraining_v2(AuxiliaryRewardManager):
         elif self.reward_type == "no_kick_reward":
             # reward of player being close to the ball and ball being close to the goal
             aux_rewards = -infos["distance_to_ball"] * 5e-8 - infos["distance_to_goal"] * 1e-7
+        elif self.reward_type == "none":
+            aux_rewards = 0.0
         else:
             raise NotImplementedError
 

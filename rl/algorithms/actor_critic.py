@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import numpy as np
 from copy import copy
 import torch
@@ -19,12 +20,16 @@ from rl.utils import ScaleParameterizedNormal, FourierEncoding
 class ActorCritic(nn.Module):
     def __init__(self, model_name, feature_shape, action_shape, hidden_size, output_activation, 
                        device, init_scale, n_envs, normalize_factor=1.0, dropout=0.0, 
-                       encoding_type="none", encoding_size=128):
+                       encoding_type="none", encoding_size=128, 
+                       use_goal_state=False, goal_position=(550.0, 0.0)):
         super().__init__()
         self.device = device
         self.n_envs = n_envs
         self.normalize_factor = normalize_factor
         self.model_name = model_name
+
+        self.use_goal_state = use_goal_state
+        self.goal_position = goal_position
 
         self.determinstic = False
 
@@ -106,6 +111,17 @@ class ActorCritic(nn.Module):
                             )
             self.actor = SubdividedActor(action_shape, hidden_size, output_activation, dropout)
 
+        elif model_name == "world_gpt":
+            self.world_encoder = WorldTransformerEncoder(feature_shape, hidden_size, 
+                                                         dropout=dropout)
+            self.critic = nn.Sequential(
+                                nn.Linear(hidden_size, hidden_size),
+                                nn.GELU(),
+                                nn.Dropout(p=dropout),
+                                nn.Linear(hidden_size, 1)
+                            )
+            self.actor = SubdividedActor(action_shape, hidden_size, output_activation, dropout)
+
         else:
             raise KeyError("Unknown model type")
 
@@ -137,7 +153,7 @@ class ActorCritic(nn.Module):
         else:
             return self.normalize_factor * states.to(self.device)
 
-    def forward(self, states: np.ndarray) -> tuple([torch.Tensor, torch.Tensor]):
+    def forward(self, states, goal_positions=None) -> tuple([torch.Tensor, torch.Tensor]):
         """
         Forward pass of the networks.
 
@@ -148,6 +164,12 @@ class ActorCritic(nn.Module):
             state_values: A tensor with the state values, with shape [n_envs,].
             action_logits_vec: A tensor with the action logits, with shape [n_envs, n_actions].
         """
+        if self.use_goal_state and not "goal_position" in states.keys():
+            if goal_positions is not None:
+                states["goal_position"] = goal_positions.to(states["ball_position"])
+            else:
+                goal_positions = torch.tensor(self.goal_position).expand_as(states["ball_position"])
+                states["goal_position"] = goal_positions.to(states["ball_position"])
         normalized_states = self.normalize_states(states)
 
         if self.model_name in ["basic", "basic_wo_dropout"]:
@@ -161,7 +183,7 @@ class ActorCritic(nn.Module):
             action_logits_vec = self.actor(normalized_states)  # shape: [n_envs, n_actions]
             return (state_values, action_logits_vec)
 
-        elif self.model_name == "world":
+        elif self.model_name in ["world", "world_gpt"]:
             world_repr = self.world_encoder(normalized_states)
             state_values = self.critic(world_repr)  # shape: [n_envs,]
             action_logits_vec = self.actor(world_repr)  # shape: [n_envs, n_actions]
@@ -195,6 +217,7 @@ class ActorCritic(nn.Module):
 
     def evaluate_actions(self, states, actions):
         state_values, action_logits = self.forward(states)
+        ipdb.set_trace()
         dist = self.dist(logits=action_logits)
 
         action_log_probs = dist.log_prob(actions)
@@ -240,6 +263,51 @@ class WorldEncoder(nn.Module):
         large_hidden = torch.cat(hiddens, dim=-1)
         world_repr = self.world_gather(large_hidden)
         return world_repr
+
+class WorldTransformerEncoder(nn.Module):
+    def __init__(self, feature_shape, hidden_size, n_heads=8, n_layers=1, dropout=0.0, 
+                 norm_first=True, activation="gelu"):
+        super().__init__()
+        self.norm_first = norm_first
+
+        self.position_encoder = nn.Linear(2, hidden_size)
+        self.speed_encoder = nn.Linear(2, hidden_size)
+        self.direction_encoder = nn.Linear(2, hidden_size)
+        self.angular_speed_encoder = nn.Linear(1, hidden_size)
+
+        self.transformer_layers = nn.ModuleList([nn.TransformerEncoderLayer(hidden_size, n_heads, 
+                                                              dim_feedforward=4*hidden_size,
+                                                              dropout=dropout,
+                                                              activation=activation,
+                                                              norm_first=norm_first) 
+                                                for _ in range(n_layers)])
+        if norm_first:
+            self.layer_norm = nn.LayerNorm(hidden_size)
+
+    def forward(self, input_dict):
+        encodings = []
+        for i, (key, inputs) in enumerate(input_dict.items()):
+            if re.search(r"angular_speed", key):
+                encoding = self.angular_speed_encoder(inputs)
+                encodings.append(encoding.unsqueeze(0))
+            elif re.search(r"speed", key):
+                encoding = self.speed_encoder(inputs)
+                encodings.append(encoding.unsqueeze(0))
+            elif re.search(r"direction", key):
+                encoding = self.direction_encoder(inputs)
+                encodings.append(encoding.unsqueeze(0))
+            elif re.search(r"position", key):
+                encoding = self.position_encoder(inputs)
+                encodings.append(encoding.unsqueeze(0))
+        hidden = torch.cat(encodings, dim=0)
+        
+        for layer in self.transformer_layers:
+            hidden = layer(hidden)
+
+        if self.norm_first:
+            hidden = self.layer_norm(hidden)
+
+        return hidden.mean(dim=0)
 
 
 class SubdividedActor(nn.Module):
