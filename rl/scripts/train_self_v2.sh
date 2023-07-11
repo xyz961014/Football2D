@@ -24,5 +24,4 @@ python train.py \
     --use_cuda \
     --learn_to_kick \
     --relative_obs \
-    --encoding_type fourier \
     ${@:1}

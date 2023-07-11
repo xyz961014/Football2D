@@ -96,7 +96,7 @@ elif model_args["algorithm"] == "ppo":
                 normalize_factor=model_args["normalize_factor"],
                 encoding_type=model_args["encoding_type"],
                 encoding_size=model_args["encoding_size"],
-                #use_goal_state=model_args["use_goal_state"]
+                use_goal_state=model_args["use_goal_state"]
                 )
 
 if model_args["lunarlander"]:

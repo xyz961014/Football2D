@@ -546,6 +546,9 @@ def main(args):
             writer.add_histogram("actor_weights/{}".format(weight_key), weight_tensor, update_step)
         for weight_key, weight_tensor in agent.critic.named_parameters():
             writer.add_histogram("critic_weights/{}".format(weight_key), weight_tensor, update_step)
+        if args.model_name in ["world", "world_gpt"]:
+            for weight_key, weight_tensor in agent.world_encoder.named_parameters():
+                writer.add_histogram("world_weights/{}".format(weight_key), weight_tensor, update_step)
     
         ##############################################
         # End of Tensorboard logging

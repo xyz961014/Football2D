@@ -210,6 +210,9 @@ class ActorCritic(nn.Module):
             actions = action_pd.mode()
         else:
             actions = action_pd.sample()
+        # clamp actions
+        actions = actions.clamp(-1.0, 1.0)
+
         action_log_probs = action_pd.log_prob(actions)
         entropy = action_pd.entropy()
 
@@ -217,7 +220,6 @@ class ActorCritic(nn.Module):
 
     def evaluate_actions(self, states, actions):
         state_values, action_logits = self.forward(states)
-        ipdb.set_trace()
         dist = self.dist(logits=action_logits)
 
         action_log_probs = dist.log_prob(actions)
