@@ -254,7 +254,7 @@ class Ball(object):
         if d_to_player.length > player.rebound_range:
             return
         
-        # ball can not go throuth the player
+        # ball can not go through the player
         if not self.rebound_from_player and not player.kicked_ball:
             inner_angle = d_to_player.get_angle_between(self.speed)
             position_fix_len = np.sqrt(np.square(player.rebound_range) - np.square(d_to_player.length * np.sin(inner_angle))) - d_to_player.length * np.cos(inner_angle)
